@@ -28,6 +28,9 @@ IPython supports notebook image display. Run `python -m pytest --collect-only -q
 | Classification | `functions/test_classification.py` | Softmax axes, cross entropy numerical gradients, second derivatives, large logits, underflow, single class, accuracy, column labels, no-gradient behavior |
 | Extrema and clipping | `functions/test_extrema.py` | Positive/negative axes, retained dimensions, ties, boundaries, higher-order gradients |
 | Layers and models | `test_layers.py`, `test_models.py` | Deferred initialization, optional bias, recursive parameters, Sequential, MLP, hidden activations, plot calls, weight save/load roundtrip |
+| VGG16 preprocessing | `test_models.py` | BGR ordering, mean subtraction, CHW layout, floating-point dtypes, and integer dtype rejection. Requires Pillow |
+| Batch normalization | `functions/test_batch_norm.py`, `test_layers.py` | NC and NCHW outputs, DeZero's running-variance correction, updates under training with `no_grad()`, numerical gradients in both modes, higher-order gradients, and weight roundtrip |
+| ResNet | `test_models.py` | Supported stage depths and parameter keys, residual downsampling and gradients, global average pooling equivalence, and ResNet50 inference logits |
 | Optimizers | `test_optimizers.py` | SGD, MomentumSGD, hooks, independent velocities, missing gradients, zero momentum |
 | Dataset and MNIST | `test_datasets.py` | prepare, unlabeled data, transforms, train/test files, IDX headers, shapes/dtypes, raw storage, sample preview |
 | DataLoader | `test_dataloaders.py` | Order, shuffle, partial batches, repeated epochs, reset, next, empty/unlabeled data |
@@ -56,11 +59,26 @@ a real PNG file. Optional GPU tests require CuPy and a CUDA device; see
 [GPU setup](../cupy-setup.md) for installation and execution.
 `integration/test_gpu.py` checks CPU/GPU transfers, broadcast gradients,
 convolution and transposed-convolution outputs and input/weight/bias gradients,
-max/average pooling gradients, and classifier training with MomentumSGD.
+max/average pooling gradients, BatchNorm gradients and running statistics,
+and classifier training with MomentumSGD.
 Convolution checks include asymmetric stride and padding and exercise the
 GPU im2col/col2im kernels. Missing CuPy/devices skip these tests; kernel or
 library failures on an available GPU fail. This coverage does not certify
 every GPU operation, dtype, or hardware configuration.
+
+ResNet tests use random initialization and require no downloads. The default
+suite does not load official pretrained archives. The
+[pretrained CNN validation notebook](../../examples/neural_network/pretrained_cnn_validation.ipynb)
+provides an opt-in comparison of VGG16 and ResNet50 logits with local DeZero
+using the official archives. Its offline pooling benchmark checks forward and
+gradient equivalence across eight tensor shapes and reports CPU latency and
+synchronized CUDA latency when CuPy and a CUDA device are available.
+The separate ResNet50 benchmark uses the same official weights and FP32
+`(1, 3, 224, 224)` input for both pooling paths. It checks logits and reports
+the median and range of 11 warmed-up forward passes per path, alternating their
+order. Timed runs exclude downloading, weight loading, image preprocessing,
+and device transfers. CUDA timings include a stream synchronization per
+forward pass. The full-model benchmark runs with MyDeZero alone.
 
 Run Python snippets in each document from top to bottom. MNIST examples in
 `data.md` download and load real data; `show()` displays images. When adding APIs,
