@@ -6,7 +6,8 @@ import pytest
 from mydezero import Variable
 from mydezero.core import add, mul
 from mydezero.functions import exp, square
-from tests.helpers import numerical_diff
+
+from ..helpers import numerical_diff
 
 
 def test_composed_function_backward():

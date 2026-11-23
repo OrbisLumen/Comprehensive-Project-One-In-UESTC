@@ -3,7 +3,8 @@
 import numpy as np
 
 from mydezero import DataLoader
-from tests.test_datasets import TinyDataset
+
+from .test_datasets import TinyDataset
 
 
 def test_ordered_batches_include_tail_and_repeat_next_epoch():

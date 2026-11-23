@@ -48,7 +48,7 @@ builtins dynamically. The handles remain alive for the interpreter's lifetime.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\python.exe -m pytest tests/integration/test_gpu.py -v
+.\.venv\Scripts\python.exe -m pytest tests/mydezero/integration/test_gpu.py -v
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
