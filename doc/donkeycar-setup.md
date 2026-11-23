@@ -9,7 +9,8 @@ Use the same Python and dependency versions on Windows and macOS, with the simul
 | --- | --- |
 | Third-party interface source | `tools/gym-donkeycar/` |
 | Simulator | `tools/donkey-sim/` |
-| Project code | `src/` |
+| Manual driving recorder | `src/donkeycar_app/record.py` |
+| Raw driving data | `data/raw/donkeycar/` (ignored by Git) |
 | Requirements and templates | `request/` |
 | Software engineering reports and figures | [MyDeZero UML](uml/README.md) and `work/software-engineering/` (planned reports) |
 
@@ -102,6 +103,55 @@ chmod u+x "$sim_app/Contents/MacOS/donkey_sim"
 open "$sim_app"
 ```
 
+## Collect Expert Drives on Generated Road
+
+Project I uses the simulator's `generated_road` scene, registered in Gymnasium
+as `donkey-generated-roads-v0`.
+
+1. Select `generated_road` in the simulator. Start `Auto Drive w Rec` to let the
+   built-in PID controller follow the road and record its camera and controls.
+2. Click `Stop` after the drive. Return to the main menu and use `Log dir` to
+   locate the export. Keep each drive in its own directory under
+   `data/raw/donkeycar/` and preserve the simulator's original files.
+3. Check a short export before bulk collection. Verify that image paths resolve
+   and that the steering labels cover left turns, right turns, and straight
+   segments. Record the road seed if available and split by drive or road seed.
+
+The [simulator recording guide](https://github.com/tawnkramer/donkey/blob/master/docs/guide/simulator.md#recorded-data)
+describes the native DonkeyCar tub format. In its per-frame JSON format,
+`cam/image_array` points to the frame and `user/angle` and `user/throttle` hold
+the expert controls. Use the native recording for supervised training and use
+the trained MyDeZero model for closed-loop evaluation.
+
+## Record a Manual Drive
+
+Start the simulator and run the recorder from the repository root. The keyboard
+controls and camera preview require a Python installation with Tkinter support.
+
+```bash
+# macOS
+.venv/bin/python -m donkeycar_app.record
+```
+
+```powershell
+# Windows PowerShell
+.\.venv\Scripts\python.exe -m donkeycar_app.record
+```
+
+Click the recorder window. Hold the up arrow to drive at fixed throttle and
+hold the left or right arrow to increase steering in that direction. Release
+the steering keys to center. Release the up arrow to cut throttle and pause
+recording. Press Escape to finish. Start the command again for a new drive.
+The default is `donkey-generated-roads-v0` at `127.0.0.1:9091`. Use `--help`
+for options, including `--throttle` to adjust the driving speed.
+
+Each drive gets its own directory under `data/raw/donkeycar/`. `images/` holds
+the original RGB PNGs, `samples.csv` pairs relative image paths with continuous
+`steering` and `throttle` values, and `metadata.json` records the track and
+capture settings. Each sample uses the camera frame displayed before its action
+was sent. Use the directory name as the run ID when splitting data for training.
+Use only the listed images in `samples.csv` and skip drives with no sample rows.
+
 ## Acceptance and Experiment Records
 
 Verify on at least one Mac and one Windows machine: launch the simulator, connect
@@ -119,7 +169,7 @@ import gymnasium as gym
 import gym_donkeycar  # Registers the environments.
 import numpy as np
 
-env = gym.make("donkey-generated-track-v0",
+env = gym.make("donkey-generated-roads-v0",
                conf={"host": "127.0.0.1", "port": 9091})
 try:
     obs, info = env.reset(seed=0)
