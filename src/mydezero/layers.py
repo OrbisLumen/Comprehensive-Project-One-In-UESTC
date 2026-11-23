@@ -346,3 +346,43 @@ class Deconv2d(Layer):
 
         y = F.deconv2d(x, self.W, self.b, self.stride, self.pad)
         return y
+
+# =============================================================================
+# BatchNorm
+# =============================================================================
+
+
+class BatchNorm(Layer):
+    """Normalize channels of a floating-point (N, C) or (N, C, H, W) batch."""
+
+    def __init__(self):
+        super().__init__()
+        # Register running statistics for weight serialization and device transfers.
+        self.avg_mean = Parameter(None, name='avg_mean')
+        self.avg_var = Parameter(None, name='avg_var')
+        self.gamma = Parameter(None, name='gamma')
+        self.beta = Parameter(None, name='beta')
+
+    def _init_params(self, x):
+        if x.ndim not in (2, 4) or x.size == 0:
+            raise ValueError("BatchNorm expects a nonempty (N, C) or (N, C, H, W) input")
+        if not np.issubdtype(x.dtype, np.floating):
+            raise TypeError("BatchNorm expects floating-point input")
+
+        xp = cuda.get_array_module(x)
+        D = x.shape[1]
+        if self.avg_mean.data is None:
+            self.avg_mean.data = xp.zeros(D, dtype=x.dtype)
+        if self.avg_var.data is None:
+            self.avg_var.data = xp.ones(D, dtype=x.dtype)
+        if self.gamma.data is None:
+            self.gamma.data = xp.ones(D, dtype=x.dtype)
+        if self.beta.data is None:
+            self.beta.data = xp.zeros(D, dtype=x.dtype)
+
+    def forward(self, x):
+        """Apply normalization and lazily initialize state on the input device."""
+        if self.avg_mean.data is None:
+            self._init_params(x)
+        return F.batch_norm(x, self.gamma, self.beta, self.avg_mean.data,
+                            self.avg_var.data)

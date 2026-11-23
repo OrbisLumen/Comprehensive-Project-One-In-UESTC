@@ -71,6 +71,7 @@ NumPy/CuPy arrays; outputs are Variables.
 | `max(x, axis=None, keepdims=False)`, `min(...)` | Each tied extremum receives the full upstream gradient |
 | `clip(x, x_min, x_max)` | Gradient is 1 inside the interval and at its boundaries, 0 outside |
 | `dropout(x, dropout_ratio=0.5)` | Randomly masks elements and rescales the rest during training; identity in `test_mode` |
+| `batch_norm(x, gamma, beta, avg_mean, avg_var, decay=0.9, eps=2e-5)` | Normalizes nonempty floating-point `(N, C)` or `(N, C, H, W)` batches. Scale, bias, and both running arrays have shape `(C,)` and share the input device. Updates running arrays in place during training. Supports derivatives of `x`, `gamma`, and `beta` in both modes |
 | `conv2d(x, W, b=None, stride=1, pad=0)` | 2D convolution; input `(N, C, H, W)`, filters `(OC, C, KH, KW)` |
 | `deconv2d(x, W, b=None, stride=1, pad=0, outsize=None)` | 2D transposed convolution; filters `(C, OC, KH, KW)` |
 | `pooling(x, kernel_size, stride=1, pad=0)` | Spatial max pooling; backward routes each gradient to the window maximum |
@@ -92,10 +93,14 @@ through `mydezero.functions`.
 | `layers.Linear(out_size, nobias=False, dtype=np.float32, in_size=None)` | Owns W and optional b; infers input width on the first call if in_size is omitted |
 | `layers.Conv2d(out_channels, kernel_size, stride=1, pad=0, nobias=False, dtype=np.float32, in_channels=None)` | Owns filters `(OC, C, KH, KW)` and optional b; infers input channels on the first call |
 | `layers.Deconv2d(out_channels, kernel_size, stride=1, pad=0, nobias=False, dtype=np.float32, in_channels=None)` | Transposed convolution layer; owns filters `(C, OC, KH, KW)` |
+| `layers.BatchNorm()` | Lazily initializes scale, bias, running mean, and running variance on the input device. Uses running statistics in `test_mode()` and includes them in weight files |
 | `Model` | Extends Layer with graph plotting |
 | `Model.plot(*inputs, to_file='model.png')` | Runs forward and plots; paths are relative to the project's `draft/` |
 | `models.Sequential(*layers)` | Calls layers in order without adding activations; an empty sequence returns its input |
 | `models.MLP(fc_output_sizes, activation=F.sigmoid)` | Nonempty width sequence ending with output width; activates hidden layers only |
+| `models.VGG16(pretrained=False)` | VGG16 classifier. Returns `(N, 1000)` logits from an NCHW batch. Set `pretrained=True` to load DeZero weights |
+| `VGG16.preprocess(image, size=(224, 224), dtype=np.float32)` | Converts a Pillow image to floating-point, mean-centered BGR in CHW layout. Pass `size=None` to keep its dimensions |
+| `models.ResNet(n_layers=152, pretrained=False)`, `ResNet50`, `ResNet101`, `ResNet152` | Classifiers that return `(N, 1000)` logits from an NCHW batch. Set `pretrained=True` to load the corresponding DeZero archive |
 | `optimizers.Optimizer` | Implement `update_one(param)`; `setup(model)` binds the model and returns the optimizer |
 | `add_hook(callback)` | Runs before updates in registration order; receives parameters with gradients |
 | `update()` | Updates parameters with gradients; does not clear gradients |
@@ -104,8 +109,9 @@ through `mydezero.functions`.
 
 Use floating-point parameter arrays. Reuse MomentumSGD across batches to retain
 momentum. With CuPy installed, variables, layers, optimizers, and DataLoader
-batches move to the GPU via `to_gpu()`/`to_cpu()`. Pretrained networks are
-not implemented.
+batches move to the GPU via `to_gpu()`/`to_cpu()`. See
+[VGG16 inference](usage.md#vgg16-inference) and
+[ResNet inference](usage.md#resnet-inference) for weight loading.
 
 ## Data and Utilities
 

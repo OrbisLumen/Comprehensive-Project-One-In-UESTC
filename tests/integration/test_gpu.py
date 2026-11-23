@@ -3,8 +3,9 @@
 import numpy as np
 import pytest
 
-from mydezero import Variable, cuda
+from mydezero import Variable, cuda, test_mode as inference_mode
 import mydezero.functions as F
+from mydezero.layers import BatchNorm
 from mydezero.models import MLP
 from mydezero.optimizers import MomentumSGD
 
@@ -98,3 +99,26 @@ def test_gpu_classifier_training_and_model_transfer(cp):
     model.to_cpu()
     assert all(isinstance(p.data, np.ndarray) for p in model.params())
     np.testing.assert_allclose(model(cp.asnumpy(x)).data, expected, rtol=1e-5, atol=1e-6)
+
+
+def test_batch_norm_gradients_and_running_statistics_match_cpu(cp):
+    data = np.random.default_rng(11).normal(size=(2, 3, 2, 4)).astype(np.float32)
+    x = Variable(data)
+    device_x = Variable(cp.asarray(data))
+    cpu, gpu = BatchNorm(), BatchNorm()
+    expected = cpu(x)
+    actual = gpu(device_x)
+    (expected ** 2).sum().backward()
+    (actual ** 2).sum().backward()
+
+    np.testing.assert_allclose(cp.asnumpy(actual.data), expected.data, atol=1e-6)
+    np.testing.assert_allclose(cp.asnumpy(device_x.grad.data), x.grad.data, atol=1e-5)
+    for name in ('gamma', 'beta'):
+        host_grad = getattr(cpu, name).grad.data
+        device_grad = getattr(gpu, name).grad.data
+        np.testing.assert_allclose(cp.asnumpy(device_grad), host_grad, atol=1e-5)
+    gpu.to_cpu()
+    for name in ('avg_mean', 'avg_var'):
+        np.testing.assert_allclose(getattr(gpu, name).data, getattr(cpu, name).data, atol=1e-6)
+    with inference_mode():
+        np.testing.assert_allclose(gpu(x).data, cpu(x).data, atol=1e-6)

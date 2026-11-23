@@ -23,6 +23,7 @@ Suggested reading order:
 | `neural_network` | [train_mnist_mlp.ipynb](neural_network/train_mnist_mlp.ipynb) | Training an MLP on MNIST |
 | `neural_network` | [train_mnist_with_gpu.ipynb](neural_network/train_mnist_with_gpu.ipynb) | Training an MLP on MNIST with GPU acceleration |
 | `neural_network` | [weights_saved_loaded.ipynb](neural_network/weights_saved_loaded.ipynb) | Saving and loading trained weights |
+| `neural_network` | [pretrained_cnn_validation.ipynb](neural_network/pretrained_cnn_validation.ipynb) | Official-weight comparison with DeZero and CPU/CUDA benchmarks for global average pooling and full ResNet50 inference |
 
 Computation graphs are saved in the project's `draft/` directory.
 Notebooks retain their saved outputs; rerun them after code changes.

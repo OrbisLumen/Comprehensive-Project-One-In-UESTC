@@ -657,6 +657,83 @@ def dropout(x, dropout_ratio=0.5):
         return x
 
 # =============================================================================
+# batch normalization
+# =============================================================================
+class BatchNorm(Function):
+    """Normalize channel values using batch or running statistics."""
+
+    def __init__(self, avg_mean, avg_var, decay, eps):
+        self.avg_mean = avg_mean
+        self.avg_var = avg_var
+        self.decay = decay
+        self.eps = eps
+
+    def forward(self, x, gamma, beta):
+        if x.ndim not in (2, 4) or x.size == 0:
+            raise ValueError("batch_norm expects a nonempty (N, C) or (N, C, H, W) input")
+        if not np.issubdtype(x.dtype, np.floating):
+            raise TypeError("batch_norm expects floating-point input")
+
+        channels = x.shape[1]
+        if any(p.shape != (channels,) for p in (gamma, beta, self.avg_mean, self.avg_var)):
+            raise ValueError("batch_norm expects one scale, bias, mean, and variance per channel")
+
+        self.axes = (0,) if x.ndim == 2 else (0, 2, 3)
+        self.channel_shape = (1, channels) + (1,) * (x.ndim - 2)
+        self.count = x.size // channels
+        self.train = mydezero.Config.train
+        xp = cuda.get_array_module(x)
+
+        if self.train:
+            mean = x.mean(axis=self.axes)
+            var = x.var(axis=self.axes)
+            # Keep the running variance convention used by DeZero.
+            correction = self.count / (self.count - 1) if self.count > 1 else 1
+            self.avg_mean *= self.decay
+            self.avg_mean += (1 - self.decay) * mean
+            self.avg_var *= self.decay
+            self.avg_var += ((1 - self.decay) * correction) * var
+        else:
+            mean, var = self.avg_mean, self.avg_var
+            self.inference_mean = mean.copy().reshape(self.channel_shape)
+
+        self.inv_std = (1 / xp.sqrt(var + self.eps)).reshape(self.channel_shape)
+        self.normalized = (x - mean.reshape(self.channel_shape)) * self.inv_std
+        return self.normalized * gamma.reshape(self.channel_shape) + beta.reshape(self.channel_shape)
+
+    def backward(self, gy):
+        x, gamma, _ = self.inputs
+        normalized, inv_std = self.normalized, self.inv_std
+        if mydezero.Config.enable_backprop:
+            # Rebuild the dependency on x when recording a gradient graph.
+            if self.train:
+                centered = x - x.sum(axis=self.axes, keepdims=True) / self.count
+                var = (centered ** 2).sum(axis=self.axes, keepdims=True) / self.count
+                inv_std = (var + self.eps) ** -0.5
+                normalized = centered * inv_std
+            else:
+                normalized = (x - self.inference_mean) * inv_std
+
+        gbeta = gy.sum(axis=self.axes)
+        ggamma = (gy * normalized).sum(axis=self.axes)
+        if self.train:
+            gy = gy - (gbeta.reshape(self.channel_shape)
+                       + normalized * ggamma.reshape(self.channel_shape)) / self.count
+        gx = gy * gamma.reshape(self.channel_shape) * inv_std
+        return gx, ggamma, gbeta
+
+
+def batch_norm(x, gamma, beta, avg_mean, avg_var, decay=0.9, eps=2e-5):
+    """Normalize a floating-point (N, C) or (N, C, H, W) batch by channel.
+
+    The running mean and variance arrays are updated in place in training mode
+    and used as fixed statistics in test mode. All arrays share a device.
+    Gradients are computed for x, gamma, and beta.
+    """
+    return BatchNorm(avg_mean, avg_var, decay, eps)(x, gamma, beta)
+
+
+# =============================================================================
 # activation function: sigmoid, softmax, ReLU
 # =============================================================================
 

@@ -52,7 +52,7 @@ builtins dynamically. The handles remain alive for the interpreter's lifetime.
 .\.venv\Scripts\python.exe -m pytest tests -q
 ```
 
-Confirm all eight GPU cases pass with no skips for GPU acceptance. Tests verify
+Confirm all GPU cases pass with no skips for GPU acceptance. Tests verify
 device array types, compare CPU/GPU outputs and gradients, and require a classifier
 to reduce its loss and predict the training labels correctly. A missing CuPy
 installation or unavailable device skips GPU cases in the ordinary suite;

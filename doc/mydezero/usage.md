@@ -128,17 +128,89 @@ reduced dimensions. It avoids exponential overflow and preserves the input, but
 does not record an automatic differentiation graph. `utils.max_backward_shape`
 restores reduced axes as size one for broadcasting max/min gradients.
 
+## VGG16 Inference
+
+Use Pillow to open the image. The default preprocessing produces a
+`(3, 224, 224)` array in BGR order with the channel means subtracted.
+Add a batch dimension before calling the model.
+
+```python
+from PIL import Image
+from mydezero import no_grad, test_mode
+from mydezero.models import VGG16
+
+model = VGG16(pretrained=True)
+with Image.open("image.jpg") as image:
+    x = VGG16.preprocess(image)[None, ...]
+with test_mode(), no_grad():
+    logits = model(x)
+assert logits.shape == (1, 1000)
+```
+
+`pretrained=True` fetches the DeZero weights on first use and reuses the
+cached file. For a compatible local archive, use `model = VGG16()` followed
+by `model.load_weights("models/vgg16.npz")`. Use the default image size with
+the official weights so that the flattened features match the first dense
+layer. `test_mode()` disables dropout and `no_grad()` disables graph recording.
+
+## Batch Normalization
+
+`BatchNorm()` normalizes each channel of a floating-point `(N, C)` or
+`(N, C, H, W)` batch. The function reduces over `N` for matrices and over
+`N`, `H`, and `W` for images. This gives the same per-channel statistics as
+DeZero's reshape to `(N * H * W, C)`.
+
+Training normalizes by the batch mean and population variance. Both running
+statistics are updated in place as `decay * running + (1 - decay) * batch`.
+For the running variance update, the batch variance is first multiplied by
+`m / max(m - 1, 1)`, where `m` is the number of values per channel. This
+follows DeZero's update, including batches with one or two values per channel.
+
+`test_mode()` uses fixed running statistics and leaves them unchanged.
+MyDeZero supports differentiation in both modes, including higher-order
+derivatives when using `backward(create_graph=True)`. `no_grad()` controls graph
+recording independently. A training forward pass still updates the running
+statistics inside `no_grad()`. Use both contexts for inference. Weight archives
+include `avg_mean`, `avg_var`, `gamma`, and `beta`.
+
+## ResNet Inference
+
+Use `ResNet50`, `ResNet101`, or `ResNet152` from `mydezero.models`. Provide a
+prepared floating-point NCHW batch `x`. For pretrained inference, use the image
+preprocessing expected by the weights.
+
+```python
+from mydezero import no_grad, test_mode
+from mydezero.models import ResNet50
+
+model = ResNet50(pretrained=True)
+with test_mode(), no_grad():
+    logits = model(x)
+assert logits.shape == (x.shape[0], 1000)
+```
+
+For a compatible local archive, use `ResNet50()` and call
+`model.load_weights("models/resnet50.npz")`. If running on CUDA, transfer the
+model and input to the GPU after loading the weights.
+
+VGG16 and ResNet inference run entirely in MyDeZero. The official DeZero release
+provides the weight files. `pretrained=True` downloads or reuses a cached
+`.npz` archive, and `load_weights(path)` reads a compatible local archive by
+parameter name with NumPy. A local archive works offline. The notebook's
+optional reference comparison imports DeZero from a local checkout.
+
 ## Implementation Compared with DeZero
 
 The reference implementation is `../../reference/deep-learning-from-scratch-3-master-cn/dezero`.
+See [the DeZero license](dezero-license.md) for the source attribution.
 MyDeZero currently implements a NumPy subset of that framework:
 
 | Module | Current implementation | Scope compared with DeZero |
 | --- | --- | --- |
-| `core.py` | Variable, Parameter, Function, graph configuration, arithmetic, higher-order differentiation | Uses a generation heap for backward traversal; NumPy only |
-| `functions.py` | Elementary functions, tensor operations, squared error, softmax cross entropy, sigmoid, ReLU, softmax, max/min, and clip | NumPy indexing supports repeated-index gradient accumulation and higher-order differentiation; matrix multiplication and linear transforms support 2D batches; classification loss accepts integer labels and averages over the batch |
-| `layers.py` | Recursive parameter collection and Linear with optional bias and deferred initialization | Convolution, recurrent layers, and weight serialization remain unimplemented |
-| `models.py` | Model base class, graph visualization, Sequential, and MLP | Pretrained networks remain unimplemented |
+| `core.py` | Variable, Parameter, Function, graph configuration, arithmetic, higher-order differentiation | Uses a generation heap for backward traversal and supports NumPy and optional CuPy arrays |
+| `functions.py` | Elementary functions, tensor operations, losses, activations, and batch normalization | NumPy indexing accumulates gradients for repeated indices. Matrix multiplication and linear transforms support 2D batches. Classification loss accepts integer labels and averages over the batch. Batch normalization reduces directly over the non-channel axes |
+| `layers.py` | Recursive parameter collection, Linear, Conv2d, Deconv2d, BatchNorm, and weight serialization | Supports lazy initialization and DeZero's hierarchical parameter keys |
+| `models.py` | Model base class, graph visualization, Sequential, MLP, VGG16, and ResNet50/101/152 | VGG16 and ResNet support DeZero pretrained weights |
 | `optimizers.py` | Optimizer base class, hooks, SGD, and MomentumSGD | Other update rules and built-in hooks remain unimplemented |
 | `datasets.py` | Dataset base class and cached MNIST loading, raw image preview | Entire split is loaded in memory; transforms run per sample |
 | `dataloaders.py` | Shuffled or sequential NumPy mini-batches | Includes partial final batches and resets after exhaustion |
