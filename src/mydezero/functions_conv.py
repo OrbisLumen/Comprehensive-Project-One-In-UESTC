@@ -1,6 +1,6 @@
 import numpy as np
 from mydezero import cuda
-from mydezero.core import Function, as_variable
+from mydezero.core import Config, Function, as_variable
 from mydezero.utils import get_conv_outsize, pair, get_deconv_outsize
 from mydezero.functions import linear, broadcast_to
 
@@ -28,11 +28,18 @@ class Conv2d(Function):
         if (_gpu_pointwise(x, W, (KH, KW), self.stride, self.pad)
                 and x.shape[1] == W.shape[1]):
             n, c, h, w = x.shape
-            pixels = x.reshape(n, c, h * w).transpose(0, 2, 1)
+            pixels = x.transpose(0, 2, 3, 1).reshape(-1, c)
             y = (pixels @ W[:, :, 0, 0].T).reshape(n, h, w, W.shape[0])
             if b is not None:
                 y += b
             return y.transpose(0, 3, 1, 2)
+        if Config.use_cudnn:
+            from mydezero import _cudnn
+            if _cudnn.eligible(x, W):
+                y = _cudnn.execute('forward', x, W, self.stride, self.pad)
+                if b is not None:
+                    y += b.reshape(1, -1, 1, 1)
+                return y
         col = im2col_array(x, (KH, KW), self.stride, self.pad, to_matrix=False)
 
         y = xp.tensordot(col, W, ((1, 2, 3), (1, 2, 3)))
@@ -86,20 +93,28 @@ class Deconv2d(Function):
         PH, PW = self.pad
         C, OC, KH, KW = Weight.shape
         N, C, H, W = x.shape
-        if (_gpu_pointwise(x, Weight, (KH, KW), self.stride, self.pad)
-                and C == Weight.shape[0]
-                and (self.outsize is None or pair(self.outsize) == (H, W))):
-            y = Weight[:, :, 0, 0].T @ x.reshape(N, C, H * W)
-            y = y.reshape(N, OC, H, W)
-            if b is not None:
-                y += b.reshape(1, -1, 1, 1)
-            return y
         if self.outsize is None:
             out_h = get_deconv_outsize(H, KH, SH, PH)
             out_w = get_deconv_outsize(W, KW, SW, PW)
         else:
             out_h, out_w = pair(self.outsize)
         img_shape = (N, OC, out_h, out_w)
+
+        if (_gpu_pointwise(x, Weight, (KH, KW), self.stride, self.pad)
+                and C == Weight.shape[0] and (out_h, out_w) == (H, W)):
+            pixels = x.transpose(0, 2, 3, 1).reshape(-1, C)
+            y = (pixels @ Weight[:, :, 0, 0]).reshape(N, H, W, OC).transpose(0, 3, 1, 2)
+            if b is not None:
+                y += b.reshape(1, -1, 1, 1)
+            return y
+        if Config.use_cudnn:
+            from mydezero import _cudnn
+            if _cudnn.eligible(x, Weight):
+                y = _cudnn.execute('data', x, Weight, self.stride, self.pad,
+                                   gradient=x, input_shape=img_shape)
+                if b is not None:
+                    y += b.reshape(1, -1, 1, 1)
+                return y
 
         gcol = xp.tensordot(Weight, x, (0, 1))
         gcol = xp.rollaxis(gcol, 3)
@@ -159,6 +174,13 @@ class Conv2DGradW(Function):
             pixels = x.transpose(0, 2, 3, 1).reshape(-1, x.shape[1])
             gradients = gy.transpose(0, 2, 3, 1).reshape(-1, gy.shape[1])
             return (gradients.T @ pixels).reshape(gy.shape[1], x.shape[1], 1, 1)
+
+        if Config.use_cudnn:
+            from mydezero import _cudnn
+            if _cudnn.eligible(x, gy):
+                shape = (gy.shape[1], x.shape[1], *self.kernel_size)
+                return _cudnn.execute('weight', x, None, self.stride, self.pad,
+                                      gradient=gy, weight_shape=shape)
 
         col = im2col_array(x, self.kernel_size, self.stride, self.pad,
                            to_matrix=False)

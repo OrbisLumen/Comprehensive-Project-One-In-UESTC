@@ -22,9 +22,11 @@ class Config:
     Attributes:
         enable_backprop (bool): Whether function calls record a computation graph.
         train (bool): Whether dropout-like functions run in training mode.
+        use_cudnn (bool): Enable optional FP32 cuDNN convolution on CUDA.
     """
     enable_backprop = True
     train = True
+    use_cudnn = False
 
 
 @contextlib.contextmanager
