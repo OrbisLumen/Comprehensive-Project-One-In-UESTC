@@ -769,12 +769,15 @@ class BatchNorm(Function):
     def backward(self, gy):
         x, gamma, _ = self.inputs
         normalized, inv_std = self.normalized, self.inv_std
+        scalar_dtype = np.result_type(x.dtype, np.float32)
+        count = cuda.get_array_module(x.data).array(self.count, dtype=scalar_dtype)
         if mydezero.Config.enable_backprop:
             # Rebuild the dependency on x when recording a gradient graph.
             if self.train:
-                centered = x - x.sum(axis=self.axes, keepdims=True) / self.count
-                var = (centered ** 2).sum(axis=self.axes, keepdims=True) / self.count
-                inv_std = (var + self.eps) ** -0.5
+                centered = x - x.sum(axis=self.axes, keepdims=True) / count
+                var = (centered ** 2).sum(axis=self.axes, keepdims=True) / count
+                eps = cuda.get_array_module(x.data).array(self.eps, dtype=scalar_dtype)
+                inv_std = (var + eps) ** -0.5
                 normalized = centered * inv_std
             else:
                 normalized = (x - self.inference_mean) * inv_std
@@ -783,7 +786,7 @@ class BatchNorm(Function):
         ggamma = (gy * normalized).sum(axis=self.axes)
         if self.train:
             gy = gy - (gbeta.reshape(self.channel_shape)
-                       + normalized * ggamma.reshape(self.channel_shape)) / self.count
+                       + normalized * ggamma.reshape(self.channel_shape)) / count
         gx = gy * gamma.reshape(self.channel_shape) * inv_std
         return gx, ggamma, gbeta
 
