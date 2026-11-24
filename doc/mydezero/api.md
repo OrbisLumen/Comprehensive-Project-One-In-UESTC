@@ -60,6 +60,7 @@ NumPy/CuPy arrays; outputs are Variables.
 | `sum_to(x, shape)` | Sums broadcast dimensions to the target shape |
 | `broadcast_to(x, shape)` | Broadcasts to a shape; backward sums gradients to the original shape |
 | `matmul(x, W)` | 2D matrix multiplication |
+| `batched_matmul(x, W)` | Matrix product over the last two axes of equal-shaped batches; operands must share rank and leading dimensions, with no broadcasting; gradients for both operands |
 | `linear(x, W, b=None)` | 2D batch affine transform `x @ W + b`; owns no parameters |
 | `mean_squared_error(x0, x1)` | Nonempty batches with matching shapes; divides total squared error by batch size N, not element count |
 | `softmax_cross_entropy(x, t)` | `(N, C)` logits and `(N,)` or `(N, 1)` integer labels; mean batch loss. Labels have no gradient |
@@ -105,6 +106,7 @@ initialization on the input device.
 | `layers.Conv2d(out_channels, kernel_size, stride=1, pad=0, nobias=False, dtype=np.float32, in_channels=None)` | Owns filters `(OC, C, KH, KW)` and optional b; infers input channels on the first call |
 | `layers.Deconv2d(out_channels, kernel_size, stride=1, pad=0, nobias=False, dtype=np.float32, in_channels=None)` | Transposed convolution layer; owns filters `(C, OC, KH, KW)` |
 | `layers.BatchNorm()` | Lazily initializes scale, bias, running mean, and running variance on the input device. Uses running statistics in `test_mode()` and includes them in weight files |
+| `layers.SelfAttention(out_size, in_size=None, dtype=np.float32)` | Single-head scaled dot-product self-attention for `(N, T, C)` batches; owns query, key, and value `Linear` projections and returns `(N, T, out_size)`. No mask, dropout, multi-head split, or returned attention weights |
 | `Model` | Extends Layer with graph plotting |
 | `Model.plot(*inputs, to_file='model.png')` | Runs forward and plots; paths are relative to the project's `draft/` |
 | `models.Sequential(*layers)` | Calls layers in order without adding activations; an empty sequence returns its input |

@@ -27,6 +27,7 @@ IPython supports notebook image display. Run `python -m pytest tests/mydezero --
 | Optimization examples | `functions/test_optimization.py` | sphere/matyas/goldstein gradients |
 | Tensor operations | `functions/test_tensor.py` | reshape, explicit transpose, sum, sum_to, broadcast_to, indexing, repeated indices, higher-order indexing gradients |
 | Matrix operations and regression loss | `functions/test_tensor.py`, `nn/test_layers.py` | matmul, linear with/without bias, input/weight/bias gradients, MSE batch normalization |
+| Batched matmul and self-attention | `functions/test_batched_matmul.py`, `nn/test_layers.py` | Batched forward parity with NumPy, numerical gradients for both operands, rank and batch validation, known-value attention, single-token and noncontiguous inputs, parameter registration, gradient checks, and weight roundtrip |
 | Classification | `functions/test_classification.py` | Softmax axes, cross entropy numerical gradients, second derivatives, large logits, underflow, single class, accuracy, column labels, no-gradient behavior |
 | Extrema and clipping | `functions/test_extrema.py` | Positive/negative axes, retained dimensions, ties, boundaries, higher-order gradients |
 | Layers and models | `nn/test_layers.py`, `nn/test_models.py` | Deferred initialization, optional bias, recursive parameters, Sequential, MLP, hidden activations, plot calls, weight save/load roundtrip |
