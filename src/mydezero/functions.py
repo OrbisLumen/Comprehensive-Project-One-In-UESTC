@@ -342,7 +342,7 @@ def get_item(x, slices):
 
 
 # =============================================================================
-# sum, sum_to, broadcast_to, matmul, linear
+# sum, sum_to, broadcast_to, matmul, batched_matmul, linear
 # =============================================================================
 
 class Sum(Function):
@@ -492,6 +492,58 @@ def matmul(x, W):
         Variable: Matrix product of shape (N, M).
     """
     return MatMul()(x, W)
+
+
+class BatchedMatMul(Function):
+    """Multiply batches of matrices over their last two axes.
+
+    Both operands must have the same rank and equal leading dimensions; the last
+    two axes are the matrix dimensions. Broadcasting is not supported.
+
+    Raises:
+        ValueError: If the operands differ in rank, have fewer than two axes, or
+            have different leading dimensions.
+    """
+
+    def forward(self, x, W):
+        if x.ndim != W.ndim:
+            raise ValueError('batched_matmul expects operands with the same rank')
+        if x.ndim < 2:
+            raise ValueError('batched_matmul expects at least two axes')
+        if x.shape[:-2] != W.shape[:-2]:
+            raise ValueError('batched_matmul expects equal leading dimensions')
+        y = x @ W
+        return y
+
+    def backward(self, gy):
+        x, W = self.inputs
+        gx = batched_matmul(gy, transpose(W, _swap_last_two_axes(W.ndim)))
+        gW = batched_matmul(transpose(x, _swap_last_two_axes(x.ndim)), gy)
+        return gx, gW
+
+
+def _swap_last_two_axes(ndim):
+    """Return axes that exchange the last two dimensions."""
+    axes = list(range(ndim))
+    axes[-1], axes[-2] = axes[-2], axes[-1]
+    return tuple(axes)
+
+
+def batched_matmul(x, W):
+    """Multiply batches of matrices over their last two axes.
+
+    Args:
+        x (Variable or np.ndarray): Left matrices of shape (..., N, K).
+        W (Variable or np.ndarray): Right matrices of shape (..., K, M).
+
+    Returns:
+        Variable: Batched product of shape (..., N, M).
+
+    Raises:
+        ValueError: If the operands differ in rank, have fewer than two axes, or
+            have different leading batch dimensions.
+    """
+    return BatchedMatMul()(x, W)
 
 
 class Linear(Function):
