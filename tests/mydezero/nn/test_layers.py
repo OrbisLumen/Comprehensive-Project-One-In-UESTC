@@ -1,4 +1,4 @@
-"""Linear layer initialization, forward output, gradients, and weight saving."""
+"""Layer initialization, forward output, gradients, and weight saving."""
 
 import numpy as np
 import pytest
@@ -81,6 +81,25 @@ def test_deconv2d_layer_forward_shape():
     y = layer(x)
 
     assert y.shape == (2, 4, 5, 5)
+
+
+@pytest.mark.parametrize('layer_class', [Linear, Conv2d, Deconv2d])
+@pytest.mark.parametrize('eager', [False, True])
+@pytest.mark.parametrize('dtype', [np.float32, np.float64])
+def test_weight_initialization_preserves_dtype(layer_class, eager, dtype):
+    if layer_class is Linear:
+        layer = Linear(4, dtype=dtype, in_size=3 if eager else None)
+        shape = (2, 3)
+    else:
+        layer = layer_class(4, 3, dtype=dtype, in_channels=3 if eager else None)
+        shape = (2, 3, 5, 5)
+    x = Variable(np.ones(shape, dtype=dtype))
+    y = layer(x)
+    y.sum().backward()
+
+    assert x.grad.dtype == y.dtype == dtype
+    for param in layer.params():
+        assert param.dtype == param.grad.dtype == dtype
 
 
 def test_batch_norm_registers_state_and_restores_inference(tmp_path):
