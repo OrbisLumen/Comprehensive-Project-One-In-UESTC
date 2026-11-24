@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "A small automatic differentiation and neural network library"
 dependencies = ["numpy", "matplotlib"]
 
+[project.optional-dependencies]
+autodrive = ["torch>=2.4", "opencv-python>=4.8"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
