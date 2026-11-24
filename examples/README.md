@@ -23,7 +23,7 @@ Suggested reading order:
 | `neural_network` | [iris_lenet_benchmark.ipynb](neural_network/iris_lenet_benchmark.ipynb) | Matched MyDeZero and PyTorch LeNet benchmarks on Iris, training diagnostics, hyperparameter search, and frozen ResNet50 features |
 | `neural_network` | [train_mnist_mlp.ipynb](neural_network/train_mnist_mlp.ipynb) | Training an MLP on MNIST |
 | `neural_network` | [train_mnist_with_gpu.ipynb](neural_network/train_mnist_with_gpu.ipynb) | Training an MLP on MNIST with GPU acceleration |
-| `neural_network` | [gpu_optimization.ipynb](neural_network/gpu_optimization.ipynb) | FP32 CUDA Adam fusion, state parity, optimizer and training-step timings |
+| `neural_network` | [gpu_optimization.ipynb](neural_network/gpu_optimization.ipynb) | Three-stage CUDA experiments, operator and model ablation, paired quality, cuDNN and scheduling feasibility |
 | `neural_network` | [weights_saved_loaded.ipynb](neural_network/weights_saved_loaded.ipynb) | Saving and loading trained weights |
 | `neural_network` | [pretrained_cnn_validation.ipynb](neural_network/pretrained_cnn_validation.ipynb) | Official-weight comparison with DeZero and CPU/CUDA benchmarks for global average pooling and full ResNet50 inference |
 
@@ -35,3 +35,11 @@ in a kernel with CUDA-enabled PyTorch and CuPy. The transfer learning section
 requires MyDeZero's ResNet50 implementation and a compatible local pretrained
 archive. The search section runs grid and random search by default. For the
 optional TPE comparison, install Optuna in the kernel and enable `RUN_TPE_SEARCH`.
+
+The GPU optimization notebook uses CUDA-enabled PyTorch, CuPy, scikit-learn,
+threadpoolctl, and the standard MNIST cache. Run it from its own directory.
+Its cuDNN probe can use the benchmark PyTorch installation's shared library or
+`MYDEZERO_CUDNN_LIBRARY`. Set `DEZERO_REFERENCE` to a compatible local DeZero
+checkout for the optional aligned-SGD comparison. These probes add no package
+runtime dependency. CUDA Graph availability depends on the installed CuPy and
+CUDA libraries. The notebook reports unsupported full-model capture explicitly.

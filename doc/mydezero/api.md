@@ -82,6 +82,13 @@ Labels are class indices, not one-hot vectors. See [usage.md](usage.md) for deta
 Convolution functions live in `mydezero.functions_conv` and are also re-exported
 through `mydezero.functions`.
 
+Matching FP32/FP64 CuPy arrays use direct GEMM for unpadded stride-1 pointwise
+convolution, including its input and weight gradients. CPU inputs use the CPU
+implementation. Unpadded 2x2 stride-2 CUDA max pooling uses direct window reads
+and compact indices for forward and backward, including gradient-graph recording.
+FP32 CUDA cross entropy uses a stable row kernel and a fused first derivative.
+Higher derivatives rebuild the differentiable softmax expression.
+
 ## Layers, Models, and Optimizers
 
 | API | Behavior |

@@ -69,6 +69,11 @@ every GPU operation, dtype, or hardware configuration.
 The [GPU optimization notebook](../../examples/neural_network/gpu_optimization.ipynb)
 checks fused CUDA Adam against the standard update over successive steps and
 records synchronized P50 and P95 for the update and complete training steps.
+It also covers pointwise convolution, direct pooling, fused cross entropy,
+paired CNN training and cumulative ablation. The cuDNN and equal-size multi-tensor
+Adam helpers are feasibility probes used only by the example.
+`integration/test_gpu_optimized.py` checks pointwise gradients, pooling edge
+semantics, loss stability, nondefault-stream execution and higher derivatives.
 
 ResNet tests use random initialization and require no downloads. The default
 suite does not load official pretrained archives. The
