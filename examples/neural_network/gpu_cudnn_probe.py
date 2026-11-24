@@ -44,7 +44,7 @@ class Convolution:
             self.conv = self.create('cudnnCreateConvolutionDescriptor', 'cudnnDestroyConvolutionDescriptor')
             self.call('cudnnSetConvolution2dDescriptor', self.conv, pad, pad, 1, 1, 1, 1, 1, 0)
             # FMA math requests FP32 without TF32 conversion.
-            self.call('cudnnSetConvolutionMathType', self.conv, 2)
+            self.call('cudnnSetConvolutionMathType', self.conv, 3)
         except Exception:
             self.close()
             raise

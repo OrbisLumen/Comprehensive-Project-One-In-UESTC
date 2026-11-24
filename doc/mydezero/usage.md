@@ -64,6 +64,8 @@ arrays.
 
 `Adam()` fuses moment and weight updates for independent, contiguous FP32
 CuPy arrays on the active CUDA device. Other arrays use the standard update.
+Both C and Fortran storage orders are supported. The Fortran path uses a
+gradient pack and physical views to keep parameter and moment access contiguous.
 Set `Adam(fused=False)` to select the standard update for comparisons.
 
 ## Softmax and Classification Loss

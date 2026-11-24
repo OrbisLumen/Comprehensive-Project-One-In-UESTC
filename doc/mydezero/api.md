@@ -89,6 +89,24 @@ and compact indices for forward and backward, including gradient-graph recording
 FP32 CUDA cross entropy uses a stable row kernel and a fused first derivative.
 Higher derivatives rebuild the differentiable softmax expression.
 
+GPU pointwise convolution flattens batch and pixel rows into one GEMM. Internal
+BatchNorm and global-average-pooling counts use at least FP32 precision to
+preserve FP32 activations and gradients and avoid FP16 count overflow.
+
+`using_config('use_cudnn', True)` enables an experimental FP32 convolution
+backend when a separately installed cuDNN library is available. Set
+`MYDEZERO_CUDNN_LIBRARY` to its shared-library path if discovery fails. The backend
+uses FMA math, direct/GEMM algorithm heuristics, and up to 256 MiB of per-call
+workspace. Descriptors are cached by device, shape, stride and padding in each
+host thread. Pointwise GEMM remains available. CPU and FP64 inputs follow their
+existing paths. The default is `use_cudnn=False`. Validate the target model's
+gradients and quality before enabling this experimental backend for training.
+
+Fused CUDA Adam supports independent C- and F-contiguous FP32 buffers. For
+Fortran-contiguous weights and moments, it packs gradients in the same order and
+updates flat physical views. The pack is included in optimizer timings and can
+temporarily require one additional gradient-sized buffer.
+
 ## Layers, Models, and Optimizers
 
 | API | Behavior |

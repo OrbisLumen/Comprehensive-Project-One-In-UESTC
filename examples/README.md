@@ -43,3 +43,9 @@ Its cuDNN probe can use the benchmark PyTorch installation's shared library or
 checkout for the optional aligned-SGD comparison. These probes add no package
 runtime dependency. CUDA Graph availability depends on the installed CuPy and
 CUDA libraries. The notebook reports unsupported full-model capture explicitly.
+
+The large-model follow-up uses `gpu_large_workloads.py` to launch independent
+processes. Set `MYDEZERO_WEIGHTS_DIR` to a directory containing compatible
+`vgg16.npz` and `resnet50.npz` archives and configure the cuDNN shared library
+for the experimental backend. The notebook reports rejected training cases
+separately from accepted speed measurements.

@@ -399,9 +399,9 @@ and the examples index when a candidate becomes implemented.
 
 ## Execution order
 
-### First implementation results
+### Initial implementation results
 
-The executed notebook contains the three-stage screening results. The framework
+The notebook retains the historical three-stage screening results. The framework
 now includes pointwise GPU forward/input/weight gradients, direct 2x2 GPU pooling,
 and FP32 CUDA cross entropy, alongside the existing fused Adam.
 
@@ -426,6 +426,73 @@ The regression suite passed 313 tests on Windows with one CUDA device. macOS
 was unavailable. Native DeZero's MLP comparison used aligned SGD and a temporary
 import compatibility alias for its removed NumPy `int` name.
 
+### Large-model regression follow-up
+
+The follow-up replaces the initial large-model acceptance conclusions above.
+It identifies three separate problems and retains controls for each correction.
+
+- Batched 1x1 GEMM regressed at some late ResNet shapes. Flattening batch and
+  spatial rows into one GEMM improves forward and input-gradient execution.
+- Integer count arrays widened ResNet global-pooling outputs and BatchNorm
+  gradients to FP64. Counts and epsilon use at least FP32 precision, including
+  gradient-graph recording. The FP32 reference isolates this correction while
+  retaining original operators and standard Adam.
+- Official VGG dense weights are Fortran-contiguous. The earlier C-only Adam
+  eligibility rule excluded its largest tensors. Fusion now supports that
+  layout using packed gradients and flat physical views. Timings include packing.
+
+The initial cuDNN probe also used the allow-conversion math constant instead of
+FMA math. Its historical timings cannot establish strict-FP32 acceleration.
+The corrected optional backend requests FMA, restricts algorithm families and
+workspace, caches descriptors, and refreshes weight values on every call.
+The new complete-model comparisons explicitly disable TF32.
+
+`gpu_large_workloads.py` measures official-weight ResNet50 at batches 1/4/16 and
+VGG16 at batches 1/4/8 on resident synthetic FP32 224x224 inputs. Inference
+alternates variants on one checkpoint. Training reloads the checkpoint per
+variant, seeds MyDeZero dropout equally, and rotates variant order across three
+fresh processes. Each process warms three calls, measures inference in five
+rounds of five calls, and training in three rounds of three calls. This smaller
+large-model timing budget differs from the core screening protocol. Retain raw
+samples and report the three-process range without calling it a confidence
+interval. Training is a complete forward/loss/backward/Adam step.
+
+The following are medians of process P50 latencies in milliseconds. Default
+means FP32 corrections, flat pointwise GEMM, pooling/loss kernels and layout-aware
+fused Adam. Optimizer-only variants reuse the same paired inference measurement.
+
+| Model and batch | Original inference | Default inference | cuDNN inference | Original training | Default training | cuDNN plus layout-aware Adam training |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| ResNet50, 1 | 11.76 | 10.46 | 10.71 | 244.60 | 42.87 | Rejected |
+| ResNet50, 4 | 23.99 | 21.80 | 19.32 | 422.64 | 87.24 | 77.12 |
+| ResNet50, 16 | 64.43 | 61.66 | 50.18 | 1386.32 | 243.56 | Rejected |
+| VGG16, 1 | 13.17 | 12.41 | 11.13 | 196.88 | 54.09 | 48.77 |
+| VGG16, 4 | 41.77 | 39.38 | 23.44 | 272.89 | 148.01 | 106.15 |
+| VGG16, 8 | 81.08 | 76.46 | 42.73 | 367.95 | 232.23 | 165.83 |
+
+At ResNet50 batch 16, the FP32-only reference takes 305.53 ms per training step.
+The default path adds a 1.25x gain over that corrected reference. Its 5.69x
+paired speedup over original behavior includes removal of unintended FP64 work.
+For VGG16 batch 8, C-only fusion takes 354.61 ms, layout-aware fusion takes
+232.23 ms, and experimental cuDNN plus layout-aware fusion takes 165.83 ms.
+Matched PyTorch eager training takes 106.61 ms for ResNet50 batch 16 and
+159.28 ms for VGG16 batch 8. ResNet50 retains a substantial engineering gap.
+
+Logits pass tolerance and prediction agreement checks. A first-step gradient
+relative-L2 gate of 0.005 against the corrected FP32 reference rejects cuDNN
+ResNet50 training at batches 1 and 16, with errors 0.008288 and 0.005555.
+Those configurations receive no training speedup claim. Batch 4 and all tested
+VGG configurations pass this gate. cuDNN remains experimental and opt-in through
+`using_config('use_cudnn', True)`, with the default disabled.
+
+The regression suite passes 326 tests, including second derivatives, changed
+weights, nondefault streams, FP64 fallback, FP32 preservation and Fortran Adam
+state agreement. Counts above the FP16 finite range also receive regression
+coverage. These resident synthetic workloads establish compute latency
+and first-step checks. They do not establish convergence or held-out accuracy
+for large datasets. CIFAR quality, complete input-pipeline timing, cold-start
+cost and profiler-counter coverage remain separate acceptance work.
+
 ### Three-stage implementation
 
 | Stage | Experiments | Deliverable and gate |
@@ -434,9 +501,10 @@ import compatibility alias for its removed NumPy `int` name.
 | 2. Loss and convolution | E4, E5 | Fused loss with differentiable higher-order fallback, and a cuDNN feasibility probe that includes descriptor setup and warmed calls |
 | 3. Scheduling and acceptance | E6, E7, E8 and combined ablation | Restricted multi-tensor update screen, changed-input graph replay, prepared-transfer comparison, paired training and matched-framework timing |
 
-The first implementation pass uses the Toy/Iris/MNIST suite. Larger models,
-portable cuDNN backend packaging, captured training and complete-epoch prefetch
-remain conditional follow-up work after the corresponding feasibility results.
+The first implementation pass uses the Toy/Iris/MNIST suite. The large-model
+follow-up adds complete synthetic ResNet50/VGG16 steps and an optional cuDNN
+backend. Large-dataset quality, macOS packaging, captured training and
+complete-epoch prefetch remain conditional follow-up work.
 The executed GPU notebook distinguishes framework paths from example prototypes.
 
 Complete the CPU PR review separately. Continue profiling and isolated GPU
