@@ -3,11 +3,12 @@
 import numpy as np
 import pytest
 
-from mydezero import Variable, cuda, test_mode as inference_mode
+from mydezero import Layer, Parameter, Variable, cuda, test_mode as inference_mode
 import mydezero.functions as F
 from mydezero.layers import BatchNorm
 from mydezero.models import MLP
-from mydezero.optimizers import MomentumSGD
+import mydezero.optimizers as optimizers
+from mydezero.optimizers import Adam, MomentumSGD
 
 
 @pytest.fixture(scope='module')
@@ -122,3 +123,86 @@ def test_batch_norm_gradients_and_running_statistics_match_cpu(cp):
         np.testing.assert_allclose(getattr(gpu, name).data, getattr(cpu, name).data, atol=1e-6)
     with inference_mode():
         np.testing.assert_allclose(gpu(x).data, cpu(x).data, atol=1e-6)
+
+
+def test_fused_adam_matches_unfused_cuda_updates(cp, monkeypatch):
+    fused_kernel = optimizers._adam_fp32_update
+    calls = []
+
+    def count_update(*args):
+        calls.append(args[0].shape)
+        fused_kernel(*args)
+
+    monkeypatch.setattr(optimizers, '_adam_fp32_update', count_update)
+
+    def scale_gradients(params):
+        for param in params:
+            param.grad.data *= 0.5
+
+    pairs = []
+    for fused in (False, True):
+        layer = Layer()
+        layer.W = Parameter(cp.ones((2, 2), dtype=cp.float32))
+        layer.b = Parameter(cp.zeros(2, dtype=cp.float32))
+        optimizer = Adam(lr=0.01, fused=fused).setup(layer)
+        optimizer.add_hook(scale_gradients)
+        pairs.append((layer, optimizer))
+
+    for step in range(8):
+        for layer, optimizer in pairs:
+            layer.W.grad = Variable(cp.full((2, 2), step - 2, dtype=cp.float32))
+            layer.b.grad = None if step % 2 else Variable(cp.array([0.2, -0.5], dtype=cp.float32))
+            optimizer.update()
+        (standard, unfused), (fused, optimized) = pairs
+        for left, right in ((standard.W, fused.W), (standard.b, fused.b)):
+            assert unfused.ts[id(left)] == optimized.ts[id(right)]
+            cp.testing.assert_allclose(left.data, right.data, rtol=1e-6, atol=1e-7)
+            for left_moments, right_moments in ((unfused.ms, optimized.ms), (unfused.vs, optimized.vs)):
+                cp.testing.assert_allclose(left_moments[id(left)], right_moments[id(right)],
+                                           rtol=1e-6, atol=1e-7)
+
+    assert calls.count((2, 2)) == 8
+    assert calls.count((2,)) == 4
+
+
+def test_fused_adam_matches_fp32_power_rounding(cp):
+    rng = np.random.default_rng(522)
+    state = []
+    for fused in (False, True):
+        param = Parameter(cp.ones(256, dtype=cp.float32))
+        optimizer = Adam(fused=fused)
+        state.append((param, optimizer))
+
+    for _ in range(4):
+        grad = rng.standard_normal(256, dtype=np.float32) * np.float32(0.001)
+        for param, optimizer in state:
+            param.grad = Variable(cp.asarray(grad))
+            optimizer.update_one(param)
+
+    cp.testing.assert_array_equal(*(optimizer.vs[id(param)] for param, optimizer in state))
+
+
+@pytest.mark.parametrize('layout', ['fp64_weight', 'fp64_gradient', 'strided_weight', 'overlapping_gradient'])
+def test_fused_adam_preserves_fallback(cp, monkeypatch, layout):
+    def reject_kernel(*args):
+        pytest.fail("Unsupported arrays must use the standard update")
+
+    monkeypatch.setattr(optimizers, '_adam_fp32_update', reject_kernel)
+    variants = []
+    for fused in (False, True):
+        values = cp.arange(8, dtype=cp.float32)
+        weight, grad = values[:4].copy(), values[4:].copy()
+        if layout == 'fp64_weight':
+            weight = weight.astype(cp.float64)
+        elif layout == 'fp64_gradient':
+            grad = grad.astype(cp.float64)
+        elif layout == 'strided_weight':
+            weight = values[::2]
+        else:
+            weight, grad = values[:4], values[2:6]
+        param = Parameter(weight)
+        param.grad = Variable(grad)
+        optimizer = Adam(fused=fused)
+        optimizer.update_one(param)
+        variants.append(param.data)
+    cp.testing.assert_array_equal(*variants)
