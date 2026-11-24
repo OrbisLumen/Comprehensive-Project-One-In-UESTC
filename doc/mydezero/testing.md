@@ -21,6 +21,8 @@ IPython supports notebook image display. Run `python -m pytest tests/mydezero --
 | Elementary functions and activations | `functions/test_elementary.py` | square/exp/sin/cos/tanh, both sigmoids, ReLU at zero, higher-order derivatives, stability |
 | Dropout | `core/test_config.py`, `functions/test_elementary.py` | test_mode identity and flag restoration, mask ratio, rescaling, zero ratio, shape and dtype preservation |
 | Convolution and pooling | `functions/test_conv.py`, `nn/test_layers.py` | conv2d/deconv2d input/weight/bias numerical gradients, convolution weight second derivatives, max-pooling argmax routing, rectangular average pooling, Conv2d/Deconv2d lazy init and shapes |
+| CPU convolution and pooling | `functions/test_cpu_convolution.py`, `functions/test_pooling_inference.py` | Forward and gradient parity with the original NumPy paths, dtype and layout coverage, and pooling edge cases and dispatch |
+| Weight initialization dtype | `nn/test_layers.py`, `integration/test_gpu.py` | Declared dtype is preserved in parameters, outputs, and gradients during eager and lazy CPU initialization and lazy CUDA initialization |
 | Patch extraction and accumulation | `functions/test_im2col.py` | im2col/col2im values and layout, matrix and 6D output, batches/channels, rectangular kernels, stride/padding, uncovered pixels, noncontiguous input, dtype and input preservation, overlap sums, numerical gradients and second derivatives |
 | Optimization examples | `functions/test_optimization.py` | sphere/matyas/goldstein gradients |
 | Tensor operations | `functions/test_tensor.py` | reshape, explicit transpose, sum, sum_to, broadcast_to, indexing, repeated indices, higher-order indexing gradients |
@@ -79,6 +81,13 @@ the median and range of 11 warmed-up forward passes per path, alternating their
 order. Timed runs exclude downloading, weight loading, image preprocessing,
 and device transfers. CUDA timings include a stream synchronization per
 forward pass. The full-model benchmark runs with MyDeZero alone.
+
+The [CPU optimization notebook](../../examples/neural_network/cpu_optimization.ipynb)
+checks weight initialization dtype and measures convolution and inference max
+pooling. It compares the old initializer's dtype with FP32, then isolates
+operator contributions with eight FP32 combinations on Toy, Iris, and MNIST.
+The notebook records P50, P95, throughput, tracked operator allocations, and
+held-out classification metrics. It also reports PyTorch CPU timings.
 
 Run Python snippets in each document from top to bottom. MNIST examples in
 `data.md` download and load real data; `show()` displays images. When adding APIs,

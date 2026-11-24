@@ -21,6 +21,7 @@ Suggested reading order:
 | `regression` | [nonlinear_regression.ipynb](regression/nonlinear_regression.ipynb) | Fitting nonlinear data with a two-layer network |
 | `neural_network` | [using_model_simple.ipynb](neural_network/using_model_simple.ipynb) | Defining a network with Model and Linear |
 | `neural_network` | [iris_lenet_benchmark.ipynb](neural_network/iris_lenet_benchmark.ipynb) | Matched MyDeZero and PyTorch LeNet benchmarks on Iris, training diagnostics, hyperparameter search, and frozen ResNet50 features |
+| `neural_network` | [cpu_optimization.ipynb](neural_network/cpu_optimization.ipynb) | CPU weight dtype, inference pooling, spatial and pointwise convolution, and end-to-end ablation against the original paths and PyTorch |
 | `neural_network` | [train_mnist_mlp.ipynb](neural_network/train_mnist_mlp.ipynb) | Training an MLP on MNIST |
 | `neural_network` | [train_mnist_with_gpu.ipynb](neural_network/train_mnist_with_gpu.ipynb) | Training an MLP on MNIST with GPU acceleration |
 | `neural_network` | [weights_saved_loaded.ipynb](neural_network/weights_saved_loaded.ipynb) | Saving and loading trained weights |
@@ -34,3 +35,6 @@ in a kernel with CUDA-enabled PyTorch and CuPy. The transfer learning section
 requires MyDeZero's ResNet50 implementation and a compatible local pretrained
 archive. The search section runs grid and random search by default. For the
 optional TPE comparison, install Optuna in the kernel and enable `RUN_TPE_SEARCH`.
+
+The CPU optimization notebook uses NumPy, CPU PyTorch, scikit-learn, and
+threadpoolctl. MNIST uses the standard MyDeZero dataset cache.

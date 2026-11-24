@@ -202,8 +202,8 @@ class Linear(Layer):
                 the device of the input.
         """
         I, O = self.in_size, self.out_size
-        W_data = xp.random.randn(I, O).astype(self.dtype) * np.sqrt(1 / I)
-        self.W.data = W_data
+        W_data = xp.random.randn(I, O) * np.sqrt(1 / I)
+        self.W.data = W_data.astype(self.dtype, copy=False)
 
     def forward(self, x):
         """Apply the affine transform, initializing weights once if needed.
@@ -264,8 +264,8 @@ class Conv2d(Layer):
         C, OC = self.in_channels, self.out_channels
         KH, KW = pair(self.kernel_size)
         scale = np.sqrt(1 / (C * KH * KW))
-        W_data = xp.random.randn(OC, C, KH, KW).astype(self.dtype) * scale
-        self.W.data = W_data
+        W_data = xp.random.randn(OC, C, KH, KW) * scale
+        self.W.data = W_data.astype(self.dtype, copy=False)
 
     def forward(self, x):
         """Apply the convolution, initializing filters once if needed.
@@ -327,8 +327,8 @@ class Deconv2d(Layer):
         C, OC = self.in_channels, self.out_channels
         KH, KW = pair(self.kernel_size)
         scale = np.sqrt(1 / (C * KH * KW))
-        W_data = xp.random.randn(C, OC, KH, KW).astype(self.dtype) * scale
-        self.W.data = W_data
+        W_data = xp.random.randn(C, OC, KH, KW) * scale
+        self.W.data = W_data.astype(self.dtype, copy=False)
 
     def forward(self, x):
         """Apply the transposed convolution, initializing filters once if needed.
