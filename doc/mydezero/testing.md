@@ -66,6 +66,10 @@ GPU im2col/col2im kernels. Missing CuPy/devices skip these tests; kernel or
 library failures on an available GPU fail. This coverage does not certify
 every GPU operation, dtype, or hardware configuration.
 
+The [GPU optimization notebook](../../examples/neural_network/gpu_optimization.ipynb)
+checks fused CUDA Adam against the standard update over successive steps and
+records synchronized P50 and P95 for the update and complete training steps.
+
 ResNet tests use random initialization and require no downloads. The default
 suite does not load official pretrained archives. The
 [pretrained CNN validation notebook](../../examples/neural_network/pretrained_cnn_validation.ipynb)

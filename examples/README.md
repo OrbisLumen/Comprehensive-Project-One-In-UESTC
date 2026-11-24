@@ -23,6 +23,7 @@ Suggested reading order:
 | `neural_network` | [iris_lenet_benchmark.ipynb](neural_network/iris_lenet_benchmark.ipynb) | Matched MyDeZero and PyTorch LeNet benchmarks on Iris, training diagnostics, hyperparameter search, and frozen ResNet50 features |
 | `neural_network` | [train_mnist_mlp.ipynb](neural_network/train_mnist_mlp.ipynb) | Training an MLP on MNIST |
 | `neural_network` | [train_mnist_with_gpu.ipynb](neural_network/train_mnist_with_gpu.ipynb) | Training an MLP on MNIST with GPU acceleration |
+| `neural_network` | [gpu_optimization.ipynb](neural_network/gpu_optimization.ipynb) | FP32 CUDA Adam fusion, state parity, optimizer and training-step timings |
 | `neural_network` | [weights_saved_loaded.ipynb](neural_network/weights_saved_loaded.ipynb) | Saving and loading trained weights |
 | `neural_network` | [pretrained_cnn_validation.ipynb](neural_network/pretrained_cnn_validation.ipynb) | Official-weight comparison with DeZero and CPU/CUDA benchmarks for global average pooling and full ResNet50 inference |
 

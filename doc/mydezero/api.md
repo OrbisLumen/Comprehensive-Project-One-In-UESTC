@@ -106,6 +106,7 @@ through `mydezero.functions`.
 | `update()` | Updates parameters with gradients; does not clear gradients |
 | `optimizers.SGD(lr=0.01)` | `param -= lr * grad` |
 | `optimizers.MomentumSGD(lr=0.01, momentum=0.9)` | Stores per-parameter velocity; `v = momentum*v - lr*grad`, `param += v` |
+| `optimizers.Adam(lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, *, fused=True)` | Tracks per-parameter moments and counts. Enables a fused weight and moment update for supported FP32 CUDA arrays |
 
 Use floating-point parameter arrays. Reuse MomentumSGD across batches to retain
 momentum. With CuPy installed, variables, layers, optimizers, and DataLoader
