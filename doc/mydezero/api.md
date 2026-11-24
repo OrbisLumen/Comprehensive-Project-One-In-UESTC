@@ -82,6 +82,17 @@ Labels are class indices, not one-hot vectors. See [usage.md](usage.md) for deta
 Convolution functions live in `mydezero.functions_conv` and are also re-exported
 through `mydezero.functions`.
 
+For matching FP32 or FP64 NumPy arrays, convolution forward and weight gradients
+use matrix multiplication. Unpadded stride-1 `1 × 1` convolution bypasses window
+expansion. Other supported windows use `sliding_window_view` and pack directly
+into contiguous rows when the NumPy version provides it. Input gradients use
+the transposed-convolution implementation. CPU `2 × 2` max pooling with stride
+2 and zero padding uses direct comparisons inside `no_grad()` for FP32 and FP64.
+
+`Linear`, `Conv2d`, and `Deconv2d` cast newly initialized weights to the layer's
+declared dtype after applying the scale factor. This also applies to lazy
+initialization on the input device.
+
 ## Layers, Models, and Optimizers
 
 | API | Behavior |
