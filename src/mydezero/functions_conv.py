@@ -25,7 +25,7 @@ def _cpu_conv_mode(x, weight_or_gradient, kernel_size, stride, pad):
         return None
 
     if kernel_size == (1, 1) and stride == (1, 1) and pad == (0, 0):
-        return None
+        return 'pointwise'
     if _sliding_window_view is not None:
         return 'packed'
     return None
@@ -52,7 +52,11 @@ class Conv2d(Function):
 
         kernel_size = W.shape[2:]
         mode = _cpu_conv_mode(x, W, kernel_size, self.stride, self.pad)
-        if mode == 'packed' and x.shape[1] == W.shape[1]:
+        if mode == 'pointwise' and x.shape[1] == W.shape[1]:
+            n, channels, height, width = x.shape
+            pixels = x.reshape(n, channels, height * width).transpose(0, 2, 1)
+            y = (pixels @ W[:, :, 0, 0].T).reshape(n, height, width, W.shape[0])
+        elif mode == 'packed' and x.shape[1] == W.shape[1]:
             columns, spatial_shape = _pack_cpu_columns(x, kernel_size, self.stride, self.pad)
             y = (columns @ W.reshape(W.shape[0], -1).T).reshape(*spatial_shape, W.shape[0])
         else:
@@ -173,7 +177,10 @@ class Conv2DGradW(Function):
             get_conv_outsize(size, kernel, stride, pad)
             for size, kernel, stride, pad in zip(x.shape[2:], self.kernel_size, self.stride, self.pad)
         ):
-            columns, _ = _pack_cpu_columns(x, self.kernel_size, self.stride, self.pad)
+            if mode == 'pointwise':
+                columns = x.transpose(0, 2, 3, 1).reshape(-1, x.shape[1])
+            else:
+                columns, _ = _pack_cpu_columns(x, self.kernel_size, self.stride, self.pad)
             gradients = gy.transpose(0, 2, 3, 1).reshape(-1, gy.shape[1])
             return (gradients.T @ columns).reshape(gy.shape[1], x.shape[1], *self.kernel_size)
 
