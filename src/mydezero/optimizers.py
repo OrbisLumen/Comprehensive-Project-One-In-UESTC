@@ -28,7 +28,7 @@ def _adam_can_fuse(xp, weight, grad, m, v):
     device_id = xp.cuda.runtime.getDevice()
     if any(not isinstance(array, xp.ndarray) or array.device.id != device_id
            or array.dtype != np.float32 or array.shape != weight.shape
-           or not array.flags.c_contiguous for array in buffers):
+           or not (array.flags.c_contiguous or array.flags.f_contiguous) for array in buffers):
         return False
     ranges = sorted((array.data.ptr, array.data.ptr + array.nbytes) for array in buffers)
     return all(end <= start for (_, end), (start, _) in zip(ranges, ranges[1:]))
@@ -189,7 +189,7 @@ class Adam(Optimizer):
         epsilon (float): Constant added to the denominator for numerical
             stability. Defaults to 1e-8.
         fused (bool): Use the fused update for supported FP32 CUDA arrays.
-            Defaults to True.
+            Supports independent C/F-contiguous buffers. Defaults to True.
 
     Attributes:
         lr (float): Learning rate used for each update.
@@ -248,7 +248,12 @@ class Adam(Optimizer):
                 self.beta1, self.beta2, 1 - self.beta1, 1 - self.beta2,
                 1 - self.beta1 ** t, 1 - self.beta2 ** t, self.lr, self.epsilon,
             ))
-            _adam_fp32_update(grad, param.data, m, v, *scalars, param.data, m, v)
+            weight = param.data
+            if (not weight.flags.c_contiguous
+                    and all(value.flags.f_contiguous for value in (weight, m, v))):
+                grad = xp.asfortranarray(grad).ravel(order='F')
+                weight, m, v = (value.ravel(order='F') for value in (weight, m, v))
+            _adam_fp32_update(grad, weight, m, v, *scalars, weight, m, v)
             return
 
         m *= self.beta1
