@@ -105,3 +105,39 @@ def test_loss_extremes_and_nondefault_stream(cp, dtype):
     assert loss.dtype == dtype and x.grad.dtype == dtype
     cp.testing.assert_allclose(loss.data, cp.asarray(1000, dtype=dtype))
     cp.testing.assert_allclose(x.grad.data, cp.array([[0.5, -0.5, 0], [0, 0, 0]], dtype=dtype))
+
+
+@pytest.mark.parametrize('create_graph', [False, True])
+def test_batchnorm_and_global_pooling_preserve_fp32_gradients(cp, create_graph):
+    from mydezero.models import _global_average_pooling_2d
+    random = np.random.default_rng(21)
+    x = Variable(cp.asarray(random.normal(size=(2, 3, 5, 7)).astype(np.float32)))
+    gamma = Variable(cp.ones(3, dtype=cp.float32))
+    beta = Variable(cp.zeros(3, dtype=cp.float32))
+    y = F.batch_norm(x, gamma, beta, cp.zeros(3, dtype=cp.float32), cp.ones(3, dtype=cp.float32))
+    pooled = _global_average_pooling_2d(y)
+    assert pooled.dtype == cp.float32
+    F.softmax_cross_entropy(pooled, cp.array([0, 2])).backward(create_graph=create_graph)
+    for parameter in (x, gamma, beta):
+        assert parameter.grad.dtype == cp.float32
+
+
+@pytest.mark.parametrize('gradient_order', ['C', 'F'])
+def test_fused_adam_updates_fortran_weights_and_moments(cp, gradient_order):
+    from mydezero import Parameter
+    from mydezero.optimizers import Adam
+    random = np.random.default_rng(82)
+    pairs = []
+    for fused in (False, True):
+        weight = Parameter(cp.array(np.ones((32, 17), dtype=np.float32), order='F'))
+        pairs.append((weight, Adam(lr=0.003, fused=fused)))
+    for _ in range(8):
+        values = random.normal(size=(32, 17)).astype(np.float32)
+        for weight, optimizer in pairs:
+            weight.grad = Variable(cp.array(values, order=gradient_order))
+            optimizer.update_one(weight)
+    (a, reference), (b, optimized) = pairs
+    for expected, actual in ((a.data, b.data), (reference.ms[id(a)], optimized.ms[id(b)]),
+                             (reference.vs[id(a)], optimized.vs[id(b)])):
+        assert actual.flags.f_contiguous
+        cp.testing.assert_allclose(actual, expected, rtol=1e-6, atol=1e-7)

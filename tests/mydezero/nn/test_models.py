@@ -205,3 +205,11 @@ def test_resnet_global_average_pooling_matches_previous_forward_and_backward(dty
     assert result.dtype == x.grad.dtype == dtype
     np.testing.assert_allclose(result.data, expected.data, rtol=1e-6, atol=1e-7)
     np.testing.assert_allclose(x.grad.data, reference.grad.data, rtol=1e-6)
+
+
+def test_global_average_pooling_count_exceeding_fp16_range():
+    x = Variable(np.full((1, 1, 256, 256), 0.125, dtype=np.float16))
+    y = _global_average_pooling_2d(x)
+    y.backward()
+    np.testing.assert_array_equal(y.data, [[0.125]])
+    np.testing.assert_allclose(x.grad.data, np.full(x.shape, 1 / 65536))
