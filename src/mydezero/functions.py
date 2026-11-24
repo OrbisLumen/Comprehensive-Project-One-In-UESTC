@@ -576,6 +576,20 @@ class SoftmaxCrossEntropy(Function):
 
     def forward(self, x, t):
         N = x.shape[0]
+        self.gpu_probabilities = None
+        if (cuda.gpu_enable and isinstance(x, cuda.cupy.ndarray)
+                and isinstance(t, cuda.cupy.ndarray) and x.ndim == 2
+                and x.dtype == np.float32 and x.shape[0] > 0 and x.shape[1] > 0
+                and t.size == N and t.dtype.kind in 'iu'):
+            xp = cuda.cupy
+            values = xp.ascontiguousarray(x)
+            labels = xp.ascontiguousarray(t, dtype=xp.int64)
+            losses = xp.empty(N, dtype=xp.float32)
+            self.gpu_probabilities = xp.empty_like(values)
+            _cross_entropy_forward((N,), (128,),
+                                   (values, labels, np.int32(x.shape[1]),
+                                    losses, self.gpu_probabilities))
+            return losses.mean()
         shifted = x - x.max(axis=1, keepdims=True)
         log_p = shifted - utils.logsumexp(shifted, axis=1)
         return -log_p[np.arange(N), t.ravel()].mean()
@@ -584,6 +598,12 @@ class SoftmaxCrossEntropy(Function):
         x, t = self.inputs
         N, CLS_NUM = x.shape
 
+        if self.gpu_probabilities is not None and not mydezero.Config.enable_backprop:
+            xp = cuda.cupy
+            labels = xp.ascontiguousarray(t.data, dtype=xp.int64)
+            return Variable(_cross_entropy_backward(
+                self.gpu_probabilities, labels, gy.data, CLS_NUM, N))
+
         xp = cuda.get_array_module(t.data)
         gy = gy / xp.array(N, dtype=x.dtype)
         y = softmax(x)
@@ -591,6 +611,51 @@ class SoftmaxCrossEntropy(Function):
         t_onehot = xp.eye(CLS_NUM, dtype=x.dtype)[t.data.ravel()]
         y = (y - t_onehot) * gy
         return y
+
+
+if cuda.gpu_enable:
+    _cross_entropy_forward = cuda.cupy.RawKernel(r'''
+    extern "C" __global__ void mydezero_cross_entropy(
+        const float* x, const long long* labels, int classes, float* loss, float* probabilities) {
+        __shared__ float scratch[128];
+        int row = blockIdx.x, tid = threadIdx.x;
+        long long offset = (long long)row * classes;
+        float maximum = -__int_as_float(0x7f800000);
+        for (int j = tid; j < classes; j += 128) maximum = fmaxf(maximum, x[offset + j]);
+        scratch[tid] = maximum;
+        __syncthreads();
+        for (int step = 64; step; step /= 2) {
+            if (tid < step) scratch[tid] = fmaxf(scratch[tid], scratch[tid + step]);
+            __syncthreads();
+        }
+        maximum = scratch[0];
+        float sum = 0;
+        for (int j = tid; j < classes; j += 128) sum += expf(x[offset + j] - maximum);
+        scratch[tid] = sum;
+        __syncthreads();
+        for (int step = 64; step; step /= 2) {
+            if (tid < step) scratch[tid] += scratch[tid + step];
+            __syncthreads();
+        }
+        sum = scratch[0];
+        for (int j = tid; j < classes; j += 128)
+            probabilities[offset + j] = expf(x[offset + j] - maximum) / sum;
+        if (tid == 0) {
+            long long label = labels[row];
+            if (label < 0) label += classes;
+            loss[row] = label >= 0 && label < classes
+                ? logf(sum) - (x[offset + label] - maximum) : __int_as_float(0x7fc00000);
+        }
+    }
+    ''', 'mydezero_cross_entropy')
+    _cross_entropy_backward = cuda.cupy.ElementwiseKernel(
+        'float32 probability, raw int64 label, S scale, int32 classes, int32 batch',
+        'S gx',
+        '''
+        long long target = label[i / classes];
+        if (target < 0) target += classes;
+        gx = (probability - (i % classes == target)) * (scale / batch);
+        ''', 'mydezero_cross_entropy_backward')
 
 
 def softmax_cross_entropy(x, t):
