@@ -1,6 +1,6 @@
 import numpy as np
 from mydezero import cuda
-from mydezero.core import Function, as_variable
+from mydezero.core import Config, Function, as_variable
 from mydezero.utils import get_conv_outsize, pair, get_deconv_outsize
 from mydezero.functions import linear, broadcast_to
 
@@ -156,6 +156,19 @@ class Pooling(Function):
         self.pad = pad
 
     def forward(self, x):
+        if (not Config.enable_backprop and type(x) is np.ndarray
+                and x.dtype in (np.float32, np.float64) and x.ndim == 4
+                and min(x.shape[2:]) >= 2
+                and pair(self.kernel_size) == pair(self.stride) == (2, 2)
+                and pair(self.pad) == (0, 0)):
+            height, width = x.shape[2:]
+            height -= height % 2
+            width -= width % 2
+            y = np.maximum(x[..., :height:2, :width:2], x[..., :height:2, 1:width:2], order="C")
+            np.maximum(y, x[..., 1:height:2, :width:2], out=y)
+            np.maximum(y, x[..., 1:height:2, 1:width:2], out=y)
+            return y
+
         col = im2col_array(x, self.kernel_size, self.stride, self.pad,
                            to_matrix=False)
 
@@ -227,6 +240,9 @@ class Pooling2DWithIndexes(Function):
 
 def pooling(x, kernel_size, stride=1, pad=0):
     """Spatial max pooling with a backward pass.
+
+    Under `no_grad()`, FP32 and FP64 CPU arrays use direct comparisons for
+    unpadded 2x2 windows with stride 2.
 
     Args:
         x (Variable or np.ndarray): Input batch of shape (N, C, H, W).
