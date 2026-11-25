@@ -70,7 +70,7 @@ def test_pooling_noncontiguous_odd_input_and_second_derivative(cp):
     cp.testing.assert_array_equal(device.grad.data, cp.asarray(host.grad.data))
 
 
-@pytest.mark.parametrize('classes,batch', [(1, 1), (3, 16), (10, 64), (1000, 3)])
+@pytest.mark.parametrize('classes,batch', [(1, 1), (3, 16), (10, 64), (33, 128), (1000, 3)])
 def test_fused_loss_and_higher_derivatives(cp, classes, batch):
     rng = np.random.default_rng(55)
     values = rng.normal(size=(batch, classes)).astype(np.float32) + np.float32(10000)
