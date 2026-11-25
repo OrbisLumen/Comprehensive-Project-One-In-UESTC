@@ -31,14 +31,14 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-按 [DonkeyCar 环境说明](doc/donkeycar-setup.md) 将固定版本的接口源码放到 `tools/gym-donkeycar/`，然后安装课程依赖并运行测试。
+按 [DonkeyCar 环境说明](doc/donkeycar/setup.md) 将固定版本的接口源码放到 `tools/gym-donkeycar/`，然后安装课程依赖并运行测试。
 
 ```bash
 python -m pip install -r requirements.txt
 python -m pytest
 ```
 
-只使用框架时，可以直接执行 `python -m pip install -e .`。Notebook 和测试使用上面的课程环境。模拟器联通检查见 [DonkeyCar 环境说明](doc/donkeycar-setup.md)，Windows NVIDIA 环境见 [CuPy 安装说明](doc/cupy-setup.md)。
+只使用框架时，可以直接执行 `python -m pip install -e .`。Notebook 和测试使用上面的课程环境。模拟器联通检查见 [DonkeyCar 环境说明](doc/donkeycar/setup.md)，Windows NVIDIA 环境见 [CuPy 安装说明](doc/cupy-setup.md)。
 
 ## 小组协作
 

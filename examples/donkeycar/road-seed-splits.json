@@ -1,0 +1,11 @@
+{
+  "scene": "generated_road",
+  "simulator_version": "v25.10.06",
+  "seed_field": "rand_seed",
+  "train": [3114514, 3131313, 8345373, 8387878],
+  "validation": [8594374, 9191919],
+  "test": [54309262, 67676767],
+  "road_features": {
+    "self_intersection": [8345373, 8594374, 54309262]
+  }
+}
