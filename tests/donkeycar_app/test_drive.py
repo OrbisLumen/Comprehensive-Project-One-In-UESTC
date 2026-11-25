@@ -1,10 +1,12 @@
 import csv
 import io
+import socket
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from donkeycar_app import drive as drive_app
 from donkeycar_app.drive import drive
 from donkeycar_app.spatial_resnet import SpatialSteeringResNet
 from mydezero import Variable, cuda
@@ -76,3 +78,72 @@ def test_lane_assist_corrects_toward_markings_and_falls_back(offset_px):
         assert np.sign(sent[0]) == np.sign(offset_px)
         assert abs(sent[0] - prediction) == pytest.approx(0.4)
 
+
+@pytest.mark.parametrize("failure, message, brake_expected", [
+    ("abort", "DonkeySim disconnected", False),
+    ("silent", "No new telemetry from DonkeySim", True),
+])
+def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
+                                                        capsys, failure, message, brake_expected):
+    checkpoint = tmp_path / "steering.npz"
+    checkpoint.touch()
+    log_dir = tmp_path / "runs"
+    cleanup = []
+    client = SimpleNamespace(
+        aborted=False, do_process_msgs=True, th=SimpleNamespace(is_alive=lambda: True),
+        s=SimpleNamespace(shutdown=lambda how: cleanup.append(("shutdown", how))),
+    )
+    handler = SimpleNamespace(last_received=0, time_received=0, fns={},
+                              blocking_send=lambda msg: cleanup.append(("brake", msg["brake"])))
+    info = dict(cte=0.1, speed=1, hit="none", lap_count=0)
+
+    def observe():
+        assert handler.last_received != handler.time_received
+        handler.last_received = handler.time_received
+        return None, 0.0, False, info
+
+    handler.observe = observe
+    viewer = SimpleNamespace(client=client, handler=handler)
+
+    class Env:
+        unwrapped = SimpleNamespace(viewer=viewer)
+        steps = 0
+
+        def reset(self):
+            handler.time_received += 1
+            return handler.observe()[0], {}
+
+        def step(self, action):
+            self.steps += 1
+            if self.steps == 1:
+                handler.time_received += 1
+            elif failure == "abort":
+                handler.fns["aborted"]({})
+            frame, reward, done, telemetry = handler.observe()
+            return frame, reward, done, False, telemetry
+
+        def close(self):
+            assert not client.do_process_msgs
+            cleanup.append(("close", None))
+
+    env = Env()
+    model = SimpleNamespace(load_weights=lambda path: None, steer=lambda frame: 0.25)
+    monkeypatch.setattr(drive_app, "SpatialSteeringResNet", lambda: model)
+    monkeypatch.setattr(drive_app.gym, "make", lambda *args, **kwargs: env)
+    monkeypatch.setattr(drive_app.sys, "argv", [
+        "drive", "--cpu", "--model-only", "--checkpoint", str(checkpoint),
+        "--log-dir", str(log_dir), "--telemetry-timeout", "0.025",
+    ])
+
+    with pytest.raises(SystemExit) as error:
+        drive_app.main()
+    assert error.value.code == 1
+    stderr = capsys.readouterr().err
+    assert message in stderr
+    [log] = log_dir.glob("*.csv")
+    assert str(log) in stderr
+    with log.open(newline="", encoding="utf-8") as source:
+        [row] = csv.DictReader(source)
+    assert row["step"] == "1" and float(row["steering"]) == 0.25
+    expected = [("brake", "1")] if brake_expected else []
+    assert cleanup == expected + [("shutdown", socket.SHUT_RDWR), ("close", None)]
