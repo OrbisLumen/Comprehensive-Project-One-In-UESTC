@@ -3,8 +3,11 @@
 import argparse
 import csv
 from datetime import datetime, timezone
+from math import isfinite
 from pathlib import Path
-from time import perf_counter
+import socket
+import sys
+from time import perf_counter, sleep
 from uuid import uuid4
 
 import gymnasium as gym
@@ -17,6 +20,59 @@ from mydezero import cuda
 
 
 DEFAULT_CHECKPOINT = Path("models/donkeycar/20261123T145241Z-ee0bda/best.npz")
+DEFAULT_TELEMETRY_TIMEOUT = 5.0
+
+
+def telemetry_connected(client):
+    return not client.aborted and client.do_process_msgs and client.th.is_alive()
+
+
+def configure_telemetry(viewer, timeout):
+    """Bound frame waits for this instance of the pinned simulator interface."""
+    handler, client = viewer.handler, viewer.client
+    observe = handler.observe
+
+    def on_abort(_message):
+        # The receiver cannot join itself. The driving thread owns socket cleanup.
+        client.aborted = True
+        client.do_process_msgs = False
+
+    def observe_with_timeout():
+        deadline = perf_counter() + timeout
+        while True:
+            if not telemetry_connected(client):
+                raise ConnectionError("DonkeySim disconnected while waiting for telemetry.")
+            if handler.last_received != handler.time_received:
+                # The driving thread is the only consumer of this frame marker.
+                return observe()
+            remaining = deadline - perf_counter()
+            if remaining <= 0:
+                raise TimeoutError(f"No new telemetry from DonkeySim for {timeout:g} seconds.")
+            sleep(min(0.001, remaining))
+
+    handler.fns["aborted"] = on_abort
+    handler.observe = observe_with_timeout
+
+
+def close_simulator(env, viewer):
+    """Attempt a final brake and wake the receiver before closing the environment."""
+    client = viewer.client
+    connected = telemetry_connected(client)
+    client.do_process_msgs = False
+    try:
+        if connected:
+            viewer.handler.blocking_send({
+                "msg_type": "control", "steering": "0", "throttle": "0", "brake": "1"
+            })
+    except OSError:
+        pass  # The peer may have closed after the connection check.
+    finally:
+        try:
+            client.s.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass  # A disconnected socket may already be shut down.
+        finally:
+            env.close()
 
 
 def lane_offset(frame):
@@ -77,12 +133,16 @@ def main():
     parser.add_argument("--port", type=int, default=9091)
     parser.add_argument("--throttle", type=float, default=0.15)
     parser.add_argument("--max-steps", type=int, default=2000)
+    parser.add_argument("--telemetry-timeout", type=float, default=DEFAULT_TELEMETRY_TIMEOUT,
+                        help="Maximum wait for a fresh frame in seconds (default: %(default)s).")
     parser.add_argument("--cpu", action="store_true", help="Use CPU even if CUDA is available.")
     parser.add_argument("--model-only", action="store_true", help="Disable Generated Road camera lane assistance.")
     parser.add_argument("--log-dir", type=Path, default=Path("runs/donkeycar/closed-loop"))
     args = parser.parse_args()
     if not 0 < args.throttle <= 1 or args.max_steps < 1:
         parser.error("Use throttle in (0, 1] and a positive step limit.")
+    if not isfinite(args.telemetry_timeout) or args.telemetry_timeout <= 0:
+        parser.error("--telemetry-timeout must be finite and positive.")
     if not args.checkpoint.is_file():
         parser.error(f"Checkpoint missing: {args.checkpoint}. Run from the repository root or set --checkpoint.")
 
@@ -98,7 +158,9 @@ def main():
     print(f"Loaded {args.checkpoint} on {'CUDA' if use_gpu else 'CPU'}. "
           f"Connecting to {args.host}:{args.port} for {args.track}.", flush=True)
     env = gym.make(args.track, conf={"host": args.host, "port": args.port})
+    viewer = env.unwrapped.viewer
     try:
+        configure_telemetry(viewer, args.telemetry_timeout)
         with log_path.open("x", encoding="utf-8", newline="") as log:
             assisted = args.track == DEFAULT_TRACK and not args.model_only
             mode = "ResNet + camera lane assistance" if assisted else "ResNet only"
@@ -106,16 +168,12 @@ def main():
             print(drive(env, model, args.throttle, args.max_steps, log, lane_assist=assisted))
     except KeyboardInterrupt:
         print("Drive interrupted.")
+    except (ConnectionError, TimeoutError) as error:
+        print(f"{error} Completed steps are saved in {log_path}.", file=sys.stderr)
+        raise SystemExit(1) from None
     finally:
-        try:
-            # Gym step waits for fresh telemetry. Send the final brake directly before disconnecting.
-            env.unwrapped.viewer.handler.blocking_send({
-                "msg_type": "control", "steering": "0", "throttle": "0", "brake": "1"
-            })
-        finally:
-            env.close()
+        close_simulator(env, viewer)
 
 
 if __name__ == "__main__":
     main()
-
