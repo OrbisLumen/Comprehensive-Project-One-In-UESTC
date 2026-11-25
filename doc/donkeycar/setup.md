@@ -12,7 +12,7 @@ Use the same Python and dependency versions on Windows and macOS, with the simul
 | Manual driving recorder | `src/donkeycar_app/record.py` |
 | Raw driving data | `data/raw/donkeycar/` (ignored by Git) |
 | Requirements and templates | `request/` |
-| Software engineering reports and figures | [MyDeZero UML](uml/README.md) and `work/software-engineering/` (planned reports) |
+| Software engineering reports and figures | [MyDeZero UML](../uml/README.md) and `work/software-engineering/` (planned reports) |
 
 Do not commit `tools/` or `.venv`. Store data, weights, and training outputs in ignored
 `data/`, `models/`, and `runs/` directories or shared storage. Record download links, checksums, and related
@@ -24,7 +24,7 @@ Shared baseline:
 - Simulator: `v25.10.06`; download the [macOS package](https://github.com/tawnkramer/gym-donkeycar/releases/download/v25.10.06/DonkeySimMac.zip) or [Windows package](https://github.com/tawnkramer/gym-donkeycar/releases/download/v25.10.06/DonkeySimWin.zip).
 - macOS archive SHA-256: `edc36077126257320d433a7d07266c1feae289245687c4b9139bac353e31dce0`
 - Windows archive SHA-256: `75bad63a38aa6467b35d99ac4fe0590858b35c2a454ab0a13ffb008e092180a5`
-- Python: 3.12. Direct dependencies are pinned in [requirements.txt](../requirements.txt).
+- Python: 3.12. Direct dependencies are pinned in [requirements.txt](../../requirements.txt).
   Transitive dependencies are resolved by pip; this is not a complete lockfile.
 
 Record version changes through PRs. Do not independently track the latest `master`.
@@ -41,7 +41,7 @@ git -C tools/gym-donkeycar checkout a1f4ca6961e17a6929c1f2e883358a1edafb479d
 
 Extract the simulator into `tools/donkey-sim/`. On Windows, keep the executable,
 data folders, and DLLs in their original relative locations.
-Create `.venv` as described in the [root README](../README.md), then install the dependencies and both projects:
+Create `.venv` as described in the [root README](../../README.md), then install the dependencies and both projects:
 
 ```bash
 # macOS
@@ -151,6 +151,42 @@ the original RGB PNGs, `samples.csv` pairs relative image paths with continuous
 capture settings. Each sample uses the camera frame displayed before its action
 was sent. Use the directory name as the run ID when splitting data for training.
 Use only the listed images in `samples.csv` and skip drives with no sample rows.
+
+## Drive with the trained ResNet50
+
+Start the simulator and leave it at the main menu. From the repository root, run
+the command for your platform. The program connects to `127.0.0.1:9091`, loads
+Generated Road, and starts steering at a fixed throttle of 0.15.
+
+```powershell
+# Windows
+.\.venv\Scripts\python.exe -m donkeycar_app.drive
+```
+
+```bash
+# macOS
+.venv/bin/python -m donkeycar_app.drive
+```
+
+The default checkpoint is `models/donkeycar/20261123T145241Z-ee0bda/best.npz`.
+Copy the weights when moving to another machine, or supply a spatial ResNet50
+checkpoint with `--checkpoint PATH`. CUDA is used when available. Use `--cpu` to
+select CPU inference. Adjust speed with `--throttle` and the control-step
+limit with `--max-steps` (default 2000).
+
+On Generated Road, the default controller adds a camera-based lane correction
+to ResNet steering. It estimates the right lane center from the yellow divider,
+the white edge when visible, and the default 160 × 120 camera geometry. When
+too few scanlines show a usable divider, it sends the model prediction directly.
+The correction is limited to 0.4 steering units in either direction.
+Use `--model-only` for a pure ResNet trial. Other tracks use pure ResNet steering.
+The CSV records the prediction in `model_steering`, the applied command in
+`steering`, and the signed look-ahead offset in `lane_offset_px` when available.
+
+Press Ctrl+C in the terminal to end the drive. The program also stops when
+the episode ends or reaches the step limit. Each drive writes a new CSV in
+`runs/donkeycar/closed-loop/` with steering, throttle, inference time, lateral
+deviation (`cte`), speed, collision and lap telemetry.
 
 ## Acceptance and Experiment Records
 
