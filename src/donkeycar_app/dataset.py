@@ -1,0 +1,52 @@
+"""Read indexed simulator drives for steering regression."""
+
+import json
+
+import numpy as np
+from PIL import Image
+
+from mydezero.models import VGG16
+
+
+def preprocess_camera(image):
+    """Convert a simulator frame to DeZero's pretrained float32 BGR format."""
+    return np.ascontiguousarray(VGG16.preprocess(image, size=None))
+
+
+def steering_loss_weights(rows, sharp_multiplier=1.0, sharp_threshold=0.3):
+    """Boost large original commands while retaining existing spike weights."""
+    if not np.isfinite(sharp_multiplier) or sharp_multiplier < 1:
+        raise ValueError("sharp_multiplier must be finite and at least 1")
+    if not np.isfinite(sharp_threshold) or not 0 < sharp_threshold <= 1:
+        raise ValueError("sharp_threshold must be in (0, 1]")
+    weights = np.array([row["weight"] for row in rows], dtype=np.float32)
+    sharp = np.array([abs(row["raw"]) >= sharp_threshold and not row["spike"]
+                      for row in rows], dtype=bool)
+    weights[sharp] *= sharp_multiplier
+    return weights.reshape(-1, 1)
+
+
+class SteeringDataset:
+    """Load indexed camera frames on demand and return one steering value per frame."""
+
+    def __init__(self, root, index_path, routes):
+        self.root = root
+        index = json.loads(index_path.read_text(encoding="utf-8"))
+        if index["path_base"] != "repository_root":
+            raise ValueError(f"Unsupported path base in {index_path}")
+        samples = index["samples"]
+        if len(samples) != index["sample_count"]:
+            raise ValueError(f"Incorrect sample count in {index_path}")
+        missing_routes = set(routes) - {sample["route"] for sample in samples}
+        if missing_routes:
+            raise ValueError(f"Routes missing from {index_path}: {sorted(missing_routes)}")
+        self.samples = [sample for sample in samples if sample["route"] in routes]
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index):
+        sample = self.samples[index]
+        with Image.open(self.root / sample["image"]) as image:
+            pixels = preprocess_camera(image)
+        return pixels, np.array([sample["steering"]], dtype=np.float32)
