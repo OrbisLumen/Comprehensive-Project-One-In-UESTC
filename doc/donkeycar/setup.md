@@ -169,10 +169,12 @@ Generated Road, and starts steering at a fixed throttle of 0.15.
 ```
 
 The default checkpoint is `models/donkeycar/20261123T145241Z-ee0bda/best.npz`.
-Copy the weights when moving to another machine, or supply a spatial ResNet50
-checkpoint with `--checkpoint PATH`. CUDA is used when available. Use `--cpu` to
-select CPU inference. Adjust speed with `--throttle` and the control-step
-limit with `--max-steps` (default 2000).
+Copy a trained `SpatialSteeringResNet` checkpoint from the training machine, or
+pass its path with `--checkpoint models/donkeycar/steering.npz`. The official
+ImageNet ResNet50 archive can initialize the backbone. The driver requires a
+checkpoint with the trained 9728-to-1 steering head.
+CUDA is used when available. Use `--cpu` to select CPU inference. Adjust speed
+with `--throttle` and the control-step limit with `--max-steps` (default 2000).
 
 On Generated Road, the default controller adds a camera-based lane correction
 to ResNet steering. It estimates the right lane center from the yellow divider,
@@ -186,7 +188,11 @@ The CSV records the prediction in `model_steering`, the applied command in
 Press Ctrl+C in the terminal to end the drive. The program also stops when
 the episode ends or reaches the step limit. Each drive writes a new CSV in
 `runs/donkeycar/closed-loop/` with steering, throttle, inference time, lateral
-deviation (`cte`), speed, collision and lap telemetry.
+deviation (`cte`), speed, collision and lap telemetry. Once the scene is loaded,
+the driver waits at most five seconds for each fresh frame. Set
+`--telemetry-timeout SECONDS` to change this limit. If telemetry stops or the
+simulator disconnects, the driver reports the error, closes the connection,
+and exits with status 1. Completed steps remain in the CSV.
 
 ## Acceptance and Experiment Records
 
