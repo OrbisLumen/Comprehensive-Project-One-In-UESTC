@@ -1,5 +1,6 @@
 """Trainable layers and recursive parameter collection."""
 
+import math
 import os
 import weakref
 
@@ -202,8 +203,8 @@ class Linear(Layer):
                 the device of the input.
         """
         I, O = self.in_size, self.out_size
-        W_data = xp.random.randn(I, O).astype(self.dtype) * np.sqrt(1 / I)
-        self.W.data = W_data
+        W_data = xp.random.randn(I, O) * np.sqrt(1 / I)
+        self.W.data = W_data.astype(self.dtype, copy=False)
 
     def forward(self, x):
         """Apply the affine transform, initializing weights once if needed.
@@ -264,8 +265,8 @@ class Conv2d(Layer):
         C, OC = self.in_channels, self.out_channels
         KH, KW = pair(self.kernel_size)
         scale = np.sqrt(1 / (C * KH * KW))
-        W_data = xp.random.randn(OC, C, KH, KW).astype(self.dtype) * scale
-        self.W.data = W_data
+        W_data = xp.random.randn(OC, C, KH, KW) * scale
+        self.W.data = W_data.astype(self.dtype, copy=False)
 
     def forward(self, x):
         """Apply the convolution, initializing filters once if needed.
@@ -327,8 +328,8 @@ class Deconv2d(Layer):
         C, OC = self.in_channels, self.out_channels
         KH, KW = pair(self.kernel_size)
         scale = np.sqrt(1 / (C * KH * KW))
-        W_data = xp.random.randn(C, OC, KH, KW).astype(self.dtype) * scale
-        self.W.data = W_data
+        W_data = xp.random.randn(C, OC, KH, KW) * scale
+        self.W.data = W_data.astype(self.dtype, copy=False)
 
     def forward(self, x):
         """Apply the transposed convolution, initializing filters once if needed.
@@ -386,3 +387,74 @@ class BatchNorm(Layer):
             self._init_params(x)
         return F.batch_norm(x, self.gamma, self.beta, self.avg_mean.data,
                             self.avg_var.data)
+
+
+# =============================================================================
+# SelfAttention
+# =============================================================================
+
+class SelfAttention(Layer):
+    """Single-head scaled dot-product self-attention over a token sequence batch.
+
+    Each token is projected to queries, keys, and values by separate Linear
+    layers. Attention weights are softmax(Q K^T / sqrt(d_k)) along the key axis.
+    Masks, dropout, multi-head splits, and returned attention weights are not
+    implemented.
+
+    Args:
+        out_size (int): Width of the query, key, value, and output projections.
+        in_size (int or None): Width of each input token. None defers parameter
+            initialization until the first forward pass.
+        dtype (np.dtype or type): Data type for initialized parameters.
+
+    Attributes:
+        out_size (int): Projection width, used as d_k in the scale.
+        in_size (int or None): Input token width, inferred on the first pass.
+        dtype (np.dtype or type): Parameter initialization data type.
+        q_proj (Layer): Query projection.
+        k_proj (Layer): Key projection.
+        v_proj (Layer): Value projection.
+
+    Raises:
+        ValueError: If the input is not a three-dimensional (N, T, C) batch
+            or the token axis is empty.
+    """
+
+    def __init__(self, out_size, in_size=None, dtype=np.float32):
+        super().__init__()
+        self.out_size = out_size
+        self.in_size = in_size
+        self.dtype = dtype
+        self.q_proj = Linear(out_size, dtype=dtype, in_size=in_size)
+        self.k_proj = Linear(out_size, dtype=dtype, in_size=in_size)
+        self.v_proj = Linear(out_size, dtype=dtype, in_size=in_size)
+
+    def forward(self, x):
+        """Apply self-attention to a nonempty batch of nonempty token sequences.
+
+        Args:
+            x (Variable or np.ndarray): Input batch of shape (N, T, in_size), with
+                N > 0 and T > 0.
+
+        Returns:
+            Variable: Attended batch of shape (N, T, out_size).
+
+        Raises:
+            ValueError: If the input does not have exactly three dimensions
+                or the token axis is empty.
+        """
+        if x.ndim != 3:
+            raise ValueError('SelfAttention expects an (N, T, C) input')
+        batch, length = x.shape[0], x.shape[1]
+        if length == 0:
+            raise ValueError('SelfAttention expects at least one token per sequence')
+        if self.in_size is None:
+            self.in_size = x.shape[2]
+        flat = x.reshape(batch * length, self.in_size)
+        q = self.q_proj(flat).reshape(batch, length, self.out_size)
+        k = self.k_proj(flat).reshape(batch, length, self.out_size)
+        v = self.v_proj(flat).reshape(batch, length, self.out_size)
+        scores = F.batched_matmul(q, F.transpose(k, (0, 2, 1)))
+        scores = scores * (1.0 / math.sqrt(self.out_size))
+        weights = F.softmax(scores, axis=-1)
+        return F.batched_matmul(weights, v)

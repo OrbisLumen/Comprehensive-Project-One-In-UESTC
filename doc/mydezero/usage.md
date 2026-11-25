@@ -205,6 +205,27 @@ provides the weight files. `pretrained=True` downloads or reuses a cached
 parameter name with NumPy. A local archive works offline. The notebook's
 optional reference comparison imports DeZero from a local checkout.
 
+## Self-attention
+
+`layers.SelfAttention` applies single-head scaled dot-product self-attention to
+an `(N, T, C)` token batch. It owns query, key, and value projections and returns
+an `(N, T, out_size)` batch. Masks, dropout, multi-head splits, and returned
+attention weights are not implemented. `F.batched_matmul` multiplies equal-shaped
+batches over their last two axes and is also usable on its own.
+
+```python
+import numpy as np
+from mydezero import Variable
+from mydezero.layers import SelfAttention
+
+attention = SelfAttention(out_size=8, in_size=4, dtype=np.float64)
+x = Variable(np.random.default_rng(0).standard_normal((2, 5, 4)))
+y = attention(x)
+y.sum().backward()
+assert y.shape == (2, 5, 8)
+assert attention.q_proj.W.grad is not None
+```
+
 ## Implementation Compared with DeZero
 
 The reference implementation is `../../reference/deep-learning-from-scratch-3-master-cn/dezero`.
@@ -214,8 +235,8 @@ MyDeZero currently implements a NumPy subset of that framework:
 | Module | Current implementation | Scope compared with DeZero |
 | --- | --- | --- |
 | `core.py` | Variable, Parameter, Function, graph configuration, arithmetic, higher-order differentiation | Uses a generation heap for backward traversal and supports NumPy and optional CuPy arrays |
-| `functions.py` | Elementary functions, tensor operations, losses, activations, and batch normalization | NumPy indexing accumulates gradients for repeated indices. Matrix multiplication and linear transforms support 2D batches. Classification loss accepts integer labels and averages over the batch. Batch normalization reduces directly over the non-channel axes |
-| `layers.py` | Recursive parameter collection, Linear, Conv2d, Deconv2d, BatchNorm, and weight serialization | Supports lazy initialization and DeZero's hierarchical parameter keys |
+| `functions.py` | Elementary functions, tensor operations, losses, activations, batch normalization, and batched matrix multiplication | NumPy indexing accumulates gradients for repeated indices. Matrix multiplication and linear transforms support 2D batches, while `batched_matmul` multiplies equal-shaped batches over their last two axes. Self-attention is not part of the local DeZero reference. Classification loss accepts integer labels and averages over the batch. Batch normalization reduces directly over the non-channel axes |
+| `layers.py` | Recursive parameter collection, Linear, Conv2d, Deconv2d, BatchNorm, SelfAttention, and weight serialization | Supports lazy initialization and DeZero's hierarchical parameter keys; SelfAttention is a single-head extension without masks, dropout, or multi-head splits |
 | `models.py` | Model base class, graph visualization, Sequential, MLP, VGG16, and ResNet50/101/152 | VGG16 and ResNet support DeZero pretrained weights |
 | `optimizers.py` | Optimizer base class, hooks, SGD, MomentumSGD, and Adam | Adam can fuse eligible FP32 CUDA updates |
 | `datasets.py` | Dataset base class and cached MNIST loading, raw image preview | Entire split is loaded in memory; transforms run per sample |

@@ -5,7 +5,7 @@ import pytest
 
 from mydezero import Layer, Parameter, Variable, cuda, test_mode as inference_mode
 import mydezero.functions as F
-from mydezero.layers import BatchNorm
+from mydezero.layers import BatchNorm, Conv2d, Deconv2d, Linear
 from mydezero.models import MLP
 import mydezero.optimizers as optimizers
 from mydezero.optimizers import Adam, MomentumSGD
@@ -100,6 +100,25 @@ def test_gpu_classifier_training_and_model_transfer(cp):
     model.to_cpu()
     assert all(isinstance(p.data, np.ndarray) for p in model.params())
     np.testing.assert_allclose(model(cp.asnumpy(x)).data, expected, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.parametrize('layer_class', [Linear, Conv2d, Deconv2d])
+def test_lazy_gpu_weight_initialization_preserves_float32(cp, layer_class):
+    if layer_class is Linear:
+        layer = Linear(4)
+        shape = (2, 3)
+    else:
+        layer = layer_class(4, 3)
+        shape = (2, 3, 5, 5)
+    layer.to_gpu()
+    x = Variable(cp.ones(shape, dtype=cp.float32))
+    y = layer(x)
+    y.sum().backward()
+
+    assert x.grad.dtype == y.dtype == cp.float32
+    for param in layer.params():
+        assert isinstance(param.data, cp.ndarray)
+        assert param.dtype == param.grad.dtype == cp.float32
 
 
 def test_batch_norm_gradients_and_running_statistics_match_cpu(cp):

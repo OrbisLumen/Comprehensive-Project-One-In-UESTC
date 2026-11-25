@@ -7,6 +7,40 @@ from mydezero.functions import linear, broadcast_to
 # =============================================================================
 #  conv2d / deconv2d
 # =============================================================================
+_sliding_window_view = getattr(np.lib.stride_tricks, 'sliding_window_view', None)
+
+
+def _cpu_conv_mode(x, weight_or_gradient, kernel_size, stride, pad):
+    if (type(x) is not np.ndarray or type(weight_or_gradient) is not np.ndarray
+            or x.dtype not in (np.float32, np.float64)
+            or weight_or_gradient.dtype != x.dtype
+            or x.ndim != 4 or weight_or_gradient.ndim != 4
+            or min(x.shape) == 0 or min(weight_or_gradient.shape) == 0):
+        return None
+
+    kh, kw = kernel_size
+    ph, pw = pad
+    if (min(kernel_size) < 1 or min(stride) < 1 or min(pad) < 0
+            or kh > x.shape[2] + 2 * ph or kw > x.shape[3] + 2 * pw):
+        return None
+
+    if kernel_size == (1, 1) and stride == (1, 1) and pad == (0, 0):
+        return 'pointwise'
+    if _sliding_window_view is not None:
+        return 'packed'
+    return None
+
+
+def _pack_cpu_columns(x, kernel_size, stride, pad):
+    ph, pw = pad
+    if ph or pw:
+        x = np.pad(x, ((0, 0), (0, 0), (ph, ph), (pw, pw)))
+    sh, sw = stride
+    windows = _sliding_window_view(x, kernel_size, axis=(2, 3))[:, :, ::sh, ::sw]
+    rows = np.ascontiguousarray(windows.transpose(0, 2, 3, 1, 4, 5))
+    return rows.reshape(-1, x.shape[1] * kernel_size[0] * kernel_size[1]), rows.shape[:3]
+
+
 def _gpu_pointwise(x, other, kernel, stride, pad):
     return (cuda.gpu_enable and isinstance(x, cuda.cupy.ndarray)
             and isinstance(other, cuda.cupy.ndarray)
@@ -24,8 +58,8 @@ class Conv2d(Function):
     def forward(self, x, W, b):
         xp = cuda.get_array_module(x)
 
-        KH, KW = W.shape[2:]
-        if (_gpu_pointwise(x, W, (KH, KW), self.stride, self.pad)
+        kernel_size = W.shape[2:]
+        if (_gpu_pointwise(x, W, kernel_size, self.stride, self.pad)
                 and x.shape[1] == W.shape[1]):
             n, c, h, w = x.shape
             pixels = x.transpose(0, 2, 3, 1).reshape(-1, c)
@@ -40,9 +74,18 @@ class Conv2d(Function):
                 if b is not None:
                     y += b.reshape(1, -1, 1, 1)
                 return y
-        col = im2col_array(x, (KH, KW), self.stride, self.pad, to_matrix=False)
 
-        y = xp.tensordot(col, W, ((1, 2, 3), (1, 2, 3)))
+        mode = _cpu_conv_mode(x, W, kernel_size, self.stride, self.pad)
+        if mode == 'pointwise' and x.shape[1] == W.shape[1]:
+            n, channels, height, width = x.shape
+            pixels = x.reshape(n, channels, height * width).transpose(0, 2, 1)
+            y = (pixels @ W[:, :, 0, 0].T).reshape(n, height, width, W.shape[0])
+        elif mode == 'packed' and x.shape[1] == W.shape[1]:
+            columns, spatial_shape = _pack_cpu_columns(x, kernel_size, self.stride, self.pad)
+            y = (columns @ W.reshape(W.shape[0], -1).T).reshape(*spatial_shape, W.shape[0])
+        else:
+            col = im2col_array(x, kernel_size, self.stride, self.pad, to_matrix=False)
+            y = xp.tensordot(col, W, ((1, 2, 3), (1, 2, 3)))
         if b is not None:
             y += b
         y = xp.rollaxis(y, 3, 1)
@@ -182,6 +225,18 @@ class Conv2DGradW(Function):
                 return _cudnn.execute('weight', x, None, self.stride, self.pad,
                                       gradient=gy, weight_shape=shape)
 
+        mode = _cpu_conv_mode(x, gy, self.kernel_size, self.stride, self.pad)
+        if mode and x.shape[0] == gy.shape[0] and gy.shape[2:] == tuple(
+            get_conv_outsize(size, kernel, stride, pad)
+            for size, kernel, stride, pad in zip(x.shape[2:], self.kernel_size, self.stride, self.pad)
+        ):
+            if mode == 'pointwise':
+                columns = x.transpose(0, 2, 3, 1).reshape(-1, x.shape[1])
+            else:
+                columns, _ = _pack_cpu_columns(x, self.kernel_size, self.stride, self.pad)
+            gradients = gy.transpose(0, 2, 3, 1).reshape(-1, gy.shape[1])
+            return (gradients.T @ columns).reshape(gy.shape[1], x.shape[1], *self.kernel_size)
+
         col = im2col_array(x, self.kernel_size, self.stride, self.pad,
                            to_matrix=False)
         gW = xp.tensordot(gy, col, ((0, 2, 3), (0, 4, 5)))
@@ -220,6 +275,20 @@ class Pooling(Function):
             self.indexes = cuda.cupy.empty(output_shape, dtype=np.int8)
             _pool2_forward(cuda.cupy.ascontiguousarray(x), h, w, y, self.indexes)
             return y
+
+        if (not Config.enable_backprop and type(x) is np.ndarray
+                and x.dtype in (np.float32, np.float64) and x.ndim == 4
+                and min(x.shape[2:]) >= 2
+                and pair(self.kernel_size) == pair(self.stride) == (2, 2)
+                and pair(self.pad) == (0, 0)):
+            height, width = x.shape[2:]
+            height -= height % 2
+            width -= width % 2
+            y = np.maximum(x[..., :height:2, :width:2], x[..., :height:2, 1:width:2], order="C")
+            np.maximum(y, x[..., 1:height:2, :width:2], out=y)
+            np.maximum(y, x[..., 1:height:2, 1:width:2], out=y)
+            return y
+
         col = im2col_array(x, self.kernel_size, self.stride, self.pad,
                            to_matrix=False)
 
@@ -339,6 +408,9 @@ if cuda.gpu_enable:
 
 def pooling(x, kernel_size, stride=1, pad=0):
     """Spatial max pooling with a backward pass.
+
+    Under `no_grad()`, FP32 and FP64 CPU arrays use direct comparisons for
+    unpadded 2x2 windows with stride 2.
 
     Args:
         x (Variable or np.ndarray): Input batch of shape (N, C, H, W).

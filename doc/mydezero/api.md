@@ -60,6 +60,7 @@ NumPy/CuPy arrays; outputs are Variables.
 | `sum_to(x, shape)` | Sums broadcast dimensions to the target shape |
 | `broadcast_to(x, shape)` | Broadcasts to a shape; backward sums gradients to the original shape |
 | `matmul(x, W)` | 2D matrix multiplication |
+| `batched_matmul(x, W)` | Matrix product over the last two axes of equal-shaped batches; operands must share rank and leading dimensions, with no broadcasting; gradients for both operands |
 | `linear(x, W, b=None)` | 2D batch affine transform `x @ W + b`; owns no parameters |
 | `mean_squared_error(x0, x1)` | Nonempty batches with matching shapes; divides total squared error by batch size N, not element count |
 | `softmax_cross_entropy(x, t)` | `(N, C)` logits and `(N,)` or `(N, 1)` integer labels; mean batch loss. Labels have no gradient |
@@ -82,16 +83,21 @@ Labels are class indices, not one-hot vectors. See [usage.md](usage.md) for deta
 Convolution functions live in `mydezero.functions_conv` and are also re-exported
 through `mydezero.functions`.
 
-Matching FP32/FP64 CuPy arrays use direct GEMM for unpadded stride-1 pointwise
-convolution, including its input and weight gradients. CPU inputs use the CPU
-implementation. Unpadded 2x2 stride-2 CUDA max pooling uses direct window reads
-and compact indices for forward and backward, including gradient-graph recording.
-FP32 CUDA cross entropy uses a stable row kernel and a fused first derivative.
-Higher derivatives rebuild the differentiable softmax expression.
+For matching FP32 or FP64 NumPy arrays, convolution forward and weight gradients
+use matrix multiplication. Unpadded stride-1 `1 × 1` convolution bypasses window
+expansion. Other supported windows use `sliding_window_view` and pack directly
+into contiguous rows when the NumPy version provides it. Input gradients use
+the transposed-convolution implementation. CPU `2 × 2` max pooling with stride
+2 and zero padding uses direct comparisons inside `no_grad()` for FP32 and FP64.
 
-GPU pointwise convolution flattens batch and pixel rows into one GEMM. Internal
-BatchNorm and global-average-pooling counts use at least FP32 precision to
-preserve FP32 activations and gradients and avoid FP16 count overflow.
+For matching FP32 or FP64 CuPy arrays, unpadded stride-1 pointwise convolution
+flattens batch and pixel rows into one GEMM for the forward pass and its
+gradients. Unpadded 2 × 2 stride-2 CUDA max pooling uses direct window reads and
+compact indices, including when recording the backward graph. FP32 CUDA cross
+entropy uses a stable row kernel and a fused first derivative. Higher
+derivatives rebuild the differentiable softmax expression. BatchNorm and global
+average pooling use counts with at least FP32 precision to preserve FP32
+activations and gradients and avoid FP16 count overflow.
 
 `using_config('use_cudnn', True)` enables an experimental FP32 convolution
 backend when a separately installed cuDNN library is available. Set
@@ -107,6 +113,10 @@ Fortran-contiguous weights and moments, it packs gradients in the same order and
 updates flat physical views. The pack is included in optimizer timings and can
 temporarily require one additional gradient-sized buffer.
 
+`Linear`, `Conv2d`, and `Deconv2d` cast newly initialized weights to the layer's
+declared dtype after applying the scale factor. This also applies to lazy
+initialization on the input device.
+
 ## Layers, Models, and Optimizers
 
 | API | Behavior |
@@ -119,6 +129,7 @@ temporarily require one additional gradient-sized buffer.
 | `layers.Conv2d(out_channels, kernel_size, stride=1, pad=0, nobias=False, dtype=np.float32, in_channels=None)` | Owns filters `(OC, C, KH, KW)` and optional b; infers input channels on the first call |
 | `layers.Deconv2d(out_channels, kernel_size, stride=1, pad=0, nobias=False, dtype=np.float32, in_channels=None)` | Transposed convolution layer; owns filters `(C, OC, KH, KW)` |
 | `layers.BatchNorm()` | Lazily initializes scale, bias, running mean, and running variance on the input device. Uses running statistics in `test_mode()` and includes them in weight files |
+| `layers.SelfAttention(out_size, in_size=None, dtype=np.float32)` | Single-head scaled dot-product self-attention for `(N, T, C)` batches with `T > 0`; owns query, key, and value `Linear` projections and returns `(N, T, out_size)`. No mask, dropout, multi-head split, or returned attention weights |
 | `Model` | Extends Layer with graph plotting |
 | `Model.plot(*inputs, to_file='model.png')` | Runs forward and plots; paths are relative to the project's `draft/` |
 | `models.Sequential(*layers)` | Calls layers in order without adding activations; an empty sequence returns its input |
