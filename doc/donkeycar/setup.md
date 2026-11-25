@@ -12,7 +12,7 @@ Use the same Python and dependency versions on Windows and macOS, with the simul
 | Manual driving recorder | `src/donkeycar_app/record.py` |
 | Raw driving data | `data/raw/donkeycar/` (ignored by Git) |
 | Requirements and templates | `request/` |
-| Software engineering reports and figures | [MyDeZero UML](uml/README.md) and `work/software-engineering/` (planned reports) |
+| Software engineering reports and figures | [MyDeZero UML](../uml/README.md) and `work/software-engineering/` (planned reports) |
 
 Do not commit `tools/` or `.venv`. Store data, weights, and training outputs in ignored
 `data/`, `models/`, and `runs/` directories or shared storage. Record download links, checksums, and related
@@ -24,7 +24,7 @@ Shared baseline:
 - Simulator: `v25.10.06`; download the [macOS package](https://github.com/tawnkramer/gym-donkeycar/releases/download/v25.10.06/DonkeySimMac.zip) or [Windows package](https://github.com/tawnkramer/gym-donkeycar/releases/download/v25.10.06/DonkeySimWin.zip).
 - macOS archive SHA-256: `edc36077126257320d433a7d07266c1feae289245687c4b9139bac353e31dce0`
 - Windows archive SHA-256: `75bad63a38aa6467b35d99ac4fe0590858b35c2a454ab0a13ffb008e092180a5`
-- Python: 3.12. Direct dependencies are pinned in [requirements.txt](../requirements.txt).
+- Python: 3.12. Direct dependencies are pinned in [requirements.txt](../../requirements.txt).
   Transitive dependencies are resolved by pip; this is not a complete lockfile.
 
 Record version changes through PRs. Do not independently track the latest `master`.
@@ -41,7 +41,7 @@ git -C tools/gym-donkeycar checkout a1f4ca6961e17a6929c1f2e883358a1edafb479d
 
 Extract the simulator into `tools/donkey-sim/`. On Windows, keep the executable,
 data folders, and DLLs in their original relative locations.
-Create `.venv` as described in the [root README](../README.md), then install the dependencies and both projects:
+Create `.venv` as described in the [root README](../../README.md), then install the dependencies and both projects:
 
 ```bash
 # macOS

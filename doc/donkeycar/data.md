@@ -1,12 +1,12 @@
 # Seeded DonkeyCar datasets
 
-Follow [the simulator setup](donkeycar-setup.md), activate the project Python environment
+Follow [the simulator setup](setup.md), activate the project Python environment
 and run the commands below from the repository root on Windows or macOS.
 Start DonkeySim and use Generated Road. The default connection port is 9091.
 
 ## Collect a drive
 
-Choose a seed from [the split manifest](../examples/donkeycar/road-seed-splits.json).
+Choose a seed from [the split manifest](../../examples/donkeycar/road-seed-splits.json).
 To verify a layout and leave it open for inspection, run:
 
 ```console
