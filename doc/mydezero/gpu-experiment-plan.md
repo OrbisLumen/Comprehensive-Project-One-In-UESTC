@@ -518,6 +518,53 @@ implementation commit per accepted change, followed by tests and documentation.
 Create follow-up task branches from the current main branch when the work is
 split into later PRs. Profiling can change the order, with evidence recorded.
 
+## GPU PR closeout
+
+This PR retains the default CUDA paths for FP32 per-tensor Adam (including
+Fortran-contiguous weights), flattened pointwise GEMM, direct 2x2 max pooling,
+fused cross entropy, and FP32 preservation in ResNet pooling and BatchNorm.
+The cuDNN backend remains opt-in. The existing notebook contains operator
+measurements, model ablations, paired small-model quality checks, and
+three-process large-model latency measurements.
+
+The historical Toy/Iris/MNIST screen improved training steps by 1.93–2.15x
+and inference by 1.26–1.40x. Five paired seeds gave matching mean accuracy
+on Toy and Iris. MNIST mean accuracy was 92.60% before and 92.68% after.
+The large-model follow-up uses official weights and resident synthetic inputs.
+ResNet50 batch 16 training improved from 305.53 to 243.56 ms (1.25x) against
+the corrected FP32 reference. The historical 1386.32 ms baseline includes
+unintended FP64 work. Default inference improved from 64.43 to 61.66 ms (1.04x).
+VGG16 batch 8 training improved from 367.95 to 232.23 ms (1.58x), and inference
+from 81.08 to 76.46 ms (1.06x). Experimental cuDNN plus layout-aware Adam
+reached 165.83 ms for training and 42.73 ms for inference in that VGG case.
+Matched PyTorch eager took 159.28 and 42.39 ms respectively. ResNet50 still
+has a substantial gap to the matched PyTorch result.
+
+The isolated follow-up explains the rejected cuDNN training cases without
+changing dispatch. Replacing only convolution forward reproduced the
+first-step error. Holding ReLU masks fixed for diagnosis reduced it substantially.
+Backward-only cuDNN agreed at a shared checkpoint to roughly 1e-6 relative L2.
+Selecting deterministic backward algorithms reproduced the same-backend
+updates at three checked steps. Independent training trajectories could still
+diverge. These observations support a later direction-specific dispatch study.
+
+The native cuBLAS Graph prototype replayed ResNet50 inference with changing
+inputs, bypassing the CuPy capture restriction. In a single-process screen,
+batch 1 went from 13.78 to 4.62 ms against eager execution of the same prototype.
+Batch 16 went from 69.28 to 68.47 ms while retaining 4.45 GiB in the capture pool.
+These prototype results do not describe default framework performance.
+Nsight software tracing passed a CUDA smoke test. Model profiling is deferred.
+
+Separate follow-up tasks:
+
+| Task | Remaining work and acceptance |
+| --- | --- |
+| ResNet convolution and layout | Profile actual model shapes, test direction-specific deterministic cuDNN, and require repeatable whole-step gains with numerical, P95, and workspace checks. ResNet50 batches 1 and 16 failed the existing all-cuDNN training gate. |
+| Real-data training and prefetch | Measure complete epochs, paired convergence and held-out quality, and include loading, preparation, and transfers. The current prefetch probe measures prepared buffers only. |
+| Graph inference and training | Bound capture memory and validate buffer and weight lifetimes for inference. Captured training needs device-side optimizer state and successive-update verification. |
+| Generalized multi-tensor Adam | Extend the equal-size prototype to real parameter lists, then account for metadata preparation, state, skipped gradients, and whole-step speed. |
+| Further convolution and precision work | Evaluate broader pooling/convolution kernels or mixed precision only in separate experiments with their own numerical and performance controls. |
+
 ## Technical references
 
 - CuPy recommends asynchronous-aware timing, warm-up and attention to first-use
