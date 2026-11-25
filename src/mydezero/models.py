@@ -223,15 +223,17 @@ class ResNet(Model):
 
     def forward(self, x):
         """Return 1,000 logits per image in an NCHW batch."""
+        return self.fc6(self.extract_features(x))
+
+    def extract_features(self, x):
+        """Return the globally pooled features before the classification head."""
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.pooling(x, kernel_size=3, stride=2)
         x = self.res2(x)
         x = self.res3(x)
         x = self.res4(x)
         x = self.res5(x)
-        x = _global_average_pooling_2d(x)
-        x = self.fc6(x)
-        return x
+        return _global_average_pooling_2d(x)
 
 
 class ResNet152(ResNet):
