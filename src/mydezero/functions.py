@@ -681,6 +681,7 @@ if cuda.gpu_enable:
             __syncthreads();
         }
         maximum = scratch[0];
+        __syncthreads();  // All warps must read the maximum before scratch is reused.
         float sum = 0;
         for (int j = tid; j < classes; j += 128) sum += expf(x[offset + j] - maximum);
         scratch[tid] = sum;
