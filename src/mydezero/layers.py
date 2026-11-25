@@ -416,7 +416,8 @@ class SelfAttention(Layer):
         v_proj (Layer): Value projection.
 
     Raises:
-        ValueError: If the input is not a three-dimensional (N, T, C) batch.
+        ValueError: If the input is not a three-dimensional (N, T, C) batch
+            or the token axis is empty.
     """
 
     def __init__(self, out_size, in_size=None, dtype=np.float32):
@@ -439,11 +440,14 @@ class SelfAttention(Layer):
             Variable: Attended batch of shape (N, T, out_size).
 
         Raises:
-            ValueError: If the input does not have exactly three dimensions.
+            ValueError: If the input does not have exactly three dimensions
+                or the token axis is empty.
         """
         if x.ndim != 3:
             raise ValueError('SelfAttention expects an (N, T, C) input')
         batch, length = x.shape[0], x.shape[1]
+        if length == 0:
+            raise ValueError('SelfAttention expects at least one token per sequence')
         if self.in_size is None:
             self.in_size = x.shape[2]
         flat = x.reshape(batch * length, self.in_size)

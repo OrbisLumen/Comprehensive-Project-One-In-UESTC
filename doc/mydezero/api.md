@@ -106,7 +106,7 @@ initialization on the input device.
 | `layers.Conv2d(out_channels, kernel_size, stride=1, pad=0, nobias=False, dtype=np.float32, in_channels=None)` | Owns filters `(OC, C, KH, KW)` and optional b; infers input channels on the first call |
 | `layers.Deconv2d(out_channels, kernel_size, stride=1, pad=0, nobias=False, dtype=np.float32, in_channels=None)` | Transposed convolution layer; owns filters `(C, OC, KH, KW)` |
 | `layers.BatchNorm()` | Lazily initializes scale, bias, running mean, and running variance on the input device. Uses running statistics in `test_mode()` and includes them in weight files |
-| `layers.SelfAttention(out_size, in_size=None, dtype=np.float32)` | Single-head scaled dot-product self-attention for `(N, T, C)` batches; owns query, key, and value `Linear` projections and returns `(N, T, out_size)`. No mask, dropout, multi-head split, or returned attention weights |
+| `layers.SelfAttention(out_size, in_size=None, dtype=np.float32)` | Single-head scaled dot-product self-attention for `(N, T, C)` batches with `T > 0`; owns query, key, and value `Linear` projections and returns `(N, T, out_size)`. No mask, dropout, multi-head split, or returned attention weights |
 | `Model` | Extends Layer with graph plotting |
 | `Model.plot(*inputs, to_file='model.png')` | Runs forward and plots; paths are relative to the project's `draft/` |
 | `models.Sequential(*layers)` | Calls layers in order without adding activations; an empty sequence returns its input |

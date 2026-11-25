@@ -240,6 +240,21 @@ def test_self_attention_rejects_non_sequence_input():
         layer(Variable(np.ones((2, 3))))
 
 
+def test_self_attention_rejects_empty_sequence_before_initialization():
+    layer = SelfAttention(3)
+
+    with pytest.raises(ValueError, match='at least one token'):
+        layer(np.empty((2, 0, 4), dtype=np.float32))
+
+    assert layer.in_size is None
+    for projection in (layer.q_proj, layer.k_proj, layer.v_proj):
+        assert projection.W.data is None
+
+    y = layer(np.ones((2, 3, 5), dtype=np.float32))
+    assert layer.in_size == 5
+    assert y.shape == (2, 3, 3)
+
+
 def test_self_attention_save_load_weights_roundtrip(tmp_path):
     layer = SelfAttention(3, in_size=2)
     x = Variable(np.ones((1, 2, 2), dtype=np.float32))
