@@ -44,6 +44,25 @@ startup = "; ".join([
 Both DLL registration and the process-local `PATH` are needed: NVRTC loads its
 builtins dynamically. The handles remain alive for the interpreter's lifetime.
 
+## Optional cuDNN 9
+
+For the experimental FP32 convolution backend, install NVIDIA's CUDA 12 cuDNN
+wheel in the same environment. Point `MYDEZERO_CUDNN_LIBRARY` to the absolute
+DLL path when automatic discovery fails. The commands below use the Windows
+wheel's layout under the repository's `.venv`.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install "nvidia-cudnn-cu12>=9,<10"
+$env:MYDEZERO_CUDNN_LIBRARY = (Resolve-Path '.\.venv\Lib\site-packages\nvidia\cudnn\bin\cudnn64_9.dll').Path
+.\.venv\Scripts\python.exe -m pytest tests/mydezero/integration/test_cudnn.py -q -rs
+```
+
+Use `python -m pip show -f nvidia-cudnn-cu12` in the same environment to locate
+the DLL if your install path differs. Set the variable in the same PowerShell
+session that launches the tests or notebook. If the library cannot be loaded,
+the six optional cuDNN tests skip. See the
+[NVIDIA Windows installation guide](https://docs.nvidia.com/cudnn/installation/backend/windows/).
+
 ## Verification
 
 ```powershell

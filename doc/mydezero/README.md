@@ -8,6 +8,7 @@ Python environment. See the [root README](../../README.md) for installation.
 - [Usage and gradient conventions](usage.md)
 - [Datasets, transforms, and mini-batches](data.md)
 - [Test coverage and verification](testing.md)
+- [GPU optimization experiment plan](gpu-experiment-plan.md)
 - [Jupyter examples](../../examples/README.md)
 - [UML design](../uml/README.md)
 

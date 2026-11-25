@@ -4,6 +4,36 @@ import numpy as np
 from mydezero import cuda
 
 
+if cuda.gpu_enable:
+    _adam_fp32_update = cuda.cupy.ElementwiseKernel(
+        'float32 grad, float32 weight, float32 m, float32 v, '
+        'float32 beta1, float32 beta2, float32 decay1, float32 decay2, '
+        'float32 correction1, float32 correction2, float32 lr, float32 eps',
+        'float32 weight_out, float32 m_out, float32 v_out',
+        '''
+        m_out = beta1 * m + decay1 * grad;
+        v_out = beta2 * v + decay2 * powf(grad, 2.0f);
+        float m_hat = m_out / correction1;
+        float v_hat = v_out / correction2;
+        weight_out = weight - lr * (m_hat / (sqrtf(v_hat) + eps));
+        ''',
+        'mydezero_adam_fp32_update',
+        # Match the separate CuPy operations, including power for the square.
+        options=('--fmad=false',),
+    )
+
+
+def _adam_can_fuse(xp, weight, grad, m, v):
+    buffers = (weight, grad, m, v)
+    device_id = xp.cuda.runtime.getDevice()
+    if any(not isinstance(array, xp.ndarray) or array.device.id != device_id
+           or array.dtype != np.float32 or array.shape != weight.shape
+           or not (array.flags.c_contiguous or array.flags.f_contiguous) for array in buffers):
+        return False
+    ranges = sorted((array.data.ptr, array.data.ptr + array.nbytes) for array in buffers)
+    return all(end <= start for (_, end), (start, _) in zip(ranges, ranges[1:]))
+
+
 # =============================================================================
 # Optimizer (base class)
 # =============================================================================
@@ -158,6 +188,8 @@ class Adam(Optimizer):
         beta2 (float): Second-moment decay factor. Defaults to 0.999.
         epsilon (float): Constant added to the denominator for numerical
             stability. Defaults to 1e-8.
+        fused (bool): Use the fused update for supported FP32 CUDA arrays.
+            Supports independent C/F-contiguous buffers. Defaults to True.
 
     Attributes:
         lr (float): Learning rate used for each update.
@@ -169,12 +201,13 @@ class Adam(Optimizer):
         vs (dict): Second-moment arrays keyed by parameter identity.
     """
 
-    def __init__(self, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+    def __init__(self, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, *, fused=True):
         super().__init__()
         self.lr = lr
         self.beta1 = beta1
         self.beta2 = beta2
         self.epsilon = epsilon
+        self.fused = fused
 
         self.ts = {}
         self.vs = {}
@@ -205,10 +238,28 @@ class Adam(Optimizer):
         self.ts[key] += 1
         m = self.ms[key]
         v = self.vs[key]
+        grad = param.grad.data
+        if (self.fused and cuda.gpu_enable and xp is cuda.cupy
+                and all(type(value) in (float, int)
+                        for value in (self.lr, self.beta1, self.beta2, self.epsilon))
+                and _adam_can_fuse(xp, param.data, grad, m, v)):
+            t = self.ts[key]
+            scalars = tuple(np.float32(value) for value in (
+                self.beta1, self.beta2, 1 - self.beta1, 1 - self.beta2,
+                1 - self.beta1 ** t, 1 - self.beta2 ** t, self.lr, self.epsilon,
+            ))
+            weight = param.data
+            if (not weight.flags.c_contiguous
+                    and all(value.flags.f_contiguous for value in (weight, m, v))):
+                grad = xp.asfortranarray(grad).ravel(order='F')
+                weight, m, v = (value.ravel(order='F') for value in (weight, m, v))
+            _adam_fp32_update(grad, weight, m, v, *scalars, weight, m, v)
+            return
+
         m *= self.beta1
-        m += (1 - self.beta1) * param.grad.data
+        m += (1 - self.beta1) * grad
         v *= self.beta2
-        v += (1 - self.beta2) * param.grad.data ** 2
+        v += (1 - self.beta2) * grad ** 2
 
         m_fix = m / (1 - self.beta1 ** self.ts[key])
         v_fix = v / (1 - self.beta2 ** self.ts[key])

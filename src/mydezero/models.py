@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from mydezero import Layer, utils
+from mydezero import Layer, cuda, utils
 import mydezero.functions as F
 import mydezero.layers as L
 
@@ -251,7 +251,8 @@ class ResNet50(ResNet):
 
 def _global_average_pooling_2d(x):
     _, _, height, width = x.shape
-    return F.sum(x, axis=(2, 3)) / (height * width)
+    count = cuda.get_array_module(x).array(height * width, dtype=np.result_type(x.dtype, np.float32))
+    return F.sum(x, axis=(2, 3)) / count
 
 
 class BuildingBlock(Layer):

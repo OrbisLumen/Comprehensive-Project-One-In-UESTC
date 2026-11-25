@@ -69,6 +69,24 @@ GPU im2col/col2im kernels. Missing CuPy/devices skip these tests; kernel or
 library failures on an available GPU fail. This coverage does not certify
 every GPU operation, dtype, or hardware configuration.
 
+The [GPU optimization notebook](../../examples/neural_network/gpu_optimization.ipynb)
+checks fused CUDA Adam against the standard update over successive steps and
+records synchronized P50 and P95 for the update and complete training steps.
+It also covers pointwise convolution, direct pooling, fused cross entropy,
+paired CNN training and cumulative ablation. The standalone cuDNN probe and
+equal-size multi-tensor Adam helper remain example feasibility experiments.
+`integration/test_gpu_optimized.py` checks pointwise gradients, pooling edge
+semantics, loss stability, nondefault-stream execution and higher derivatives.
+It also verifies FP32 gradients through BatchNorm and global average pooling.
+CPU tests cover counts above the FP16 finite range for both operations.
+`integration/test_cudnn.py` checks optional cuDNN forward and gradients,
+higher derivatives, weight updates, noncontiguous input and nondefault streams.
+Follow the [optional cuDNN setup](../cupy-setup.md#optional-cudnn-9) to run these
+tests.
+The large-model notebook follow-up reports official-weight inference, short
+synthetic training steps, dtype ablation and independent process repetitions.
+These throughput tests establish no dataset-level training quality claim.
+
 ResNet tests use random initialization and require no downloads. The default
 suite does not load official pretrained archives. The
 [pretrained CNN validation notebook](../../examples/neural_network/pretrained_cnn_validation.ipynb)
