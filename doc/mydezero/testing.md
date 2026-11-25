@@ -81,7 +81,8 @@ It also verifies FP32 gradients through BatchNorm and global average pooling.
 CPU tests cover counts above the FP16 finite range for both operations.
 `integration/test_cudnn.py` checks optional cuDNN forward and gradients,
 higher derivatives, weight updates, noncontiguous input and nondefault streams.
-These tests require a separately installed cuDNN library and otherwise skip.
+Follow the [optional cuDNN setup](../cupy-setup.md#optional-cudnn-9) to run these
+tests.
 The large-model notebook follow-up reports official-weight inference, short
 synthetic training steps, dtype ablation and independent process repetitions.
 These throughput tests establish no dataset-level training quality claim.
