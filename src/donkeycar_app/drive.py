@@ -1,5 +1,6 @@
 """Drive DonkeySim with an RGB-frame steering predictor."""
 
+import re
 import csv
 from datetime import datetime, timezone
 from math import isfinite
@@ -123,17 +124,21 @@ def drive(env, steer_frame, throttle, max_steps, log, lane_assist=False):
 
 def run_drive(steer_frame, *, track=DEFAULT_TRACK, host="127.0.0.1", port=9091,
               throttle=0.15, max_steps=2000, telemetry_timeout=DEFAULT_TELEMETRY_TIMEOUT,
-              log_dir=Path("runs/donkeycar/closed-loop"), lane_assist=False):
+              log_dir=Path("runs/donkeycar/closed-loop"), lane_assist=False, log_prefix=None):
     """Drive one episode using a callable from RGB camera frame to steering."""
     if not 0 < throttle <= 1 or max_steps < 1:
         raise ValueError("Use throttle in (0, 1] and a positive step limit.")
     if not isfinite(telemetry_timeout) or telemetry_timeout <= 0:
         raise ValueError("Use a finite positive telemetry timeout.")
+    if log_prefix is None:
+        log_prefix = getattr(getattr(steer_frame, "__self__", None), "drive_log_prefix", None)
+    if not log_prefix or not re.fullmatch(r"[A-Za-z0-9_-]+", log_prefix):
+        raise ValueError("Supply a filename-safe log_prefix identifying the notebook and multiplier.")
     steer_frame(np.zeros((120, 160, 3), dtype=np.uint8))
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:6]
-    log_path = log_dir / f"{run_id}.csv"
+    log_path = log_dir / f"{log_prefix}-{run_id}.csv"
     print(f"Connecting to {host}:{port} for {track}.", flush=True)
     env = gym.make(track, conf={"host": host, "port": port})
     viewer = env.unwrapped.viewer

@@ -133,11 +133,11 @@ def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
     env = Env()
     monkeypatch.setattr(drive_app.gym, "make", lambda *args, **kwargs: env)
     with pytest.raises(SystemExit) as error:
-        drive_app.run_drive(lambda frame: 0.25, log_dir=log_dir, telemetry_timeout=0.025)
+        drive_app.run_drive(lambda frame: 0.25, log_prefix="test_model-2x", log_dir=log_dir, telemetry_timeout=0.025)
     assert error.value.code == 1
     stderr = capsys.readouterr().err
     assert message in stderr
-    [log] = log_dir.glob("*.csv")
+    [log] = log_dir.glob("test_model-2x-*.csv")
     assert str(log) in stderr
     with log.open(newline="", encoding="utf-8") as source:
         [row] = csv.DictReader(source)
