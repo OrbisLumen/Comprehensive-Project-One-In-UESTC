@@ -154,45 +154,20 @@ Use only the listed images in `samples.csv` and skip drives with no sample rows.
 
 ## Drive with the trained ResNet50
 
-Start the simulator and leave it at the main menu. From the repository root, run
-the command for your platform. The program connects to `127.0.0.1:9091`, loads
-Generated Road, and starts steering at a fixed throttle of 0.15.
+Start DonkeySim at the main menu and open the notebook matching your trained head:
+[spatial 9728](../../examples/donkeycar/resnet50_single_frame_spatial_9728.ipynb) or
+[global 2048](../../examples/donkeycar/resnet50_single_frame_global_2048.ipynb).
+Run its model definition cell and follow **Drive a saved checkpoint** at the end.
+Use an absolute checkpoint path or a path relative to the kernel working directory.
 
-```powershell
-# Windows
-.\.venv\Scripts\python.exe -m donkeycar_app.drive
-```
-
-```bash
-# macOS
-.venv/bin/python -m donkeycar_app.drive
-```
-
-The default checkpoint is `models/donkeycar/20261123T145241Z-ee0bda/best.npz`.
-Copy a trained `SpatialSteeringResNet` checkpoint from the training machine, or
-pass its path with `--checkpoint models/donkeycar/steering.npz`. The official
-ImageNet ResNet50 archive can initialize the backbone. The driver requires a
-checkpoint with the trained 9728-to-1 steering head.
-CUDA is used when available. Use `--cpu` to select CPU inference. Adjust speed
-with `--throttle` and the control-step limit with `--max-steps` (default 2000).
-
-On Generated Road, the default controller adds a camera-based lane correction
-to ResNet steering. It estimates the right lane center from the yellow divider,
-the white edge when visible, and the default 160 × 120 camera geometry. When
-too few scanlines show a usable divider, it sends the model prediction directly.
-The correction is limited to 0.4 steering units in either direction.
-Use `--model-only` for a pure ResNet trial. Other tracks use pure ResNet steering.
-The CSV records the prediction in `model_steering`, the applied command in
-`steering`, and the signed look-ahead offset in `lane_offset_px` when available.
-
-Press Ctrl+C in the terminal to end the drive. The program also stops when
-the episode ends or reaches the step limit. Each drive writes a new CSV in
-`runs/donkeycar/closed-loop/` with steering, throttle, inference time, lateral
-deviation (`cte`), speed, collision and lap telemetry. Once the scene is loaded,
-the driver waits at most five seconds for each fresh frame. Set
-`--telemetry-timeout SECONDS` to change this limit. If telemetry stops or the
-simulator disconnects, the driver reports the error, closes the connection,
-and exits with status 1. Completed steps remain in the CSV.
+The shared `run_drive(model.steer)` connects to Generated Road at localhost port
+9091, applies model steering at throttle 0.15, and logs each step under
+`runs/donkeycar/closed-loop` relative to the working directory. Training run and weight directories start with the notebook name.
+Closed-loop CSV names include the notebook name, steering multiplier, recipe and run ID.
+For renamed checkpoints, pass the original recipe to `load_steering_model(..., recipe="...")`. Pass
+`log_dir` to choose another location. Adjust `throttle`, `max_steps`, or
+`telemetry_timeout` as keyword arguments. To enable camera lane assistance
+on Generated Road, pass `lane_assist=True`. Interrupt the kernel to stop.
 
 ## Acceptance and Experiment Records
 

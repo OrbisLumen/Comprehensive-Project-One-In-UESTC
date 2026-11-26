@@ -1,6 +1,6 @@
-"""Drive the DonkeyCar simulator with a trained spatial ResNet50."""
+"""Drive DonkeySim with an RGB-frame steering predictor."""
 
-import argparse
+import re
 import csv
 from datetime import datetime, timezone
 from math import isfinite
@@ -15,11 +15,8 @@ import gym_donkeycar  # Registers the simulator environments.
 import numpy as np
 
 from donkeycar_app.record import DEFAULT_TRACK
-from donkeycar_app.spatial_resnet import SpatialSteeringResNet
-from mydezero import cuda
 
 
-DEFAULT_CHECKPOINT = Path("models/donkeycar/20261123T145241Z-ee0bda/best.npz")
 DEFAULT_TELEMETRY_TIMEOUT = 5.0
 
 
@@ -94,7 +91,7 @@ def lane_offset(frame):
     return float(np.median(offsets)) if len(offsets) >= 2 else None
 
 
-def drive(env, model, throttle, max_steps, log, lane_assist=False):
+def drive(env, steer_frame, throttle, max_steps, log, lane_assist=False):
     """Run one episode and log the action and resulting telemetry for each step."""
     writer = csv.writer(log)
     writer.writerow(("step", "elapsed_s", "steering", "throttle", "inference_ms",
@@ -104,7 +101,7 @@ def drive(env, model, throttle, max_steps, log, lane_assist=False):
     start = perf_counter()
     for step in range(1, max_steps + 1):
         before = perf_counter()
-        prediction = model.steer(frame)
+        prediction = steer_frame(frame)
         latency = (perf_counter() - before) * 1000
         if not -1 <= prediction <= 1:
             raise ValueError(f"Invalid predicted steering: {prediction}")
@@ -125,47 +122,33 @@ def drive(env, model, throttle, max_steps, log, lane_assist=False):
     return f"Reached the limit of {max_steps} steps."
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
-    parser.add_argument("--track", default=DEFAULT_TRACK)
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=9091)
-    parser.add_argument("--throttle", type=float, default=0.15)
-    parser.add_argument("--max-steps", type=int, default=2000)
-    parser.add_argument("--telemetry-timeout", type=float, default=DEFAULT_TELEMETRY_TIMEOUT,
-                        help="Maximum wait for a fresh frame in seconds (default: %(default)s).")
-    parser.add_argument("--cpu", action="store_true", help="Use CPU even if CUDA is available.")
-    parser.add_argument("--model-only", action="store_true", help="Disable Generated Road camera lane assistance.")
-    parser.add_argument("--log-dir", type=Path, default=Path("runs/donkeycar/closed-loop"))
-    args = parser.parse_args()
-    if not 0 < args.throttle <= 1 or args.max_steps < 1:
-        parser.error("Use throttle in (0, 1] and a positive step limit.")
-    if not isfinite(args.telemetry_timeout) or args.telemetry_timeout <= 0:
-        parser.error("--telemetry-timeout must be finite and positive.")
-    if not args.checkpoint.is_file():
-        parser.error(f"Checkpoint missing: {args.checkpoint}. Run from the repository root or set --checkpoint.")
-
-    model = SpatialSteeringResNet()
-    model.load_weights(args.checkpoint)
-    use_gpu = not args.cpu and cuda.gpu_enable and cuda.cupy.is_available()
-    if use_gpu:
-        model.to_gpu()
-    model.steer(np.zeros((120, 160, 3), dtype=np.uint8))  # Warm up before connecting.
-    args.log_dir.mkdir(parents=True, exist_ok=True)
+def run_drive(steer_frame, *, track=DEFAULT_TRACK, host="127.0.0.1", port=9091,
+              throttle=0.15, max_steps=2000, telemetry_timeout=DEFAULT_TELEMETRY_TIMEOUT,
+              log_dir=Path("runs/donkeycar/closed-loop"), lane_assist=False, log_prefix=None):
+    """Drive one episode using a callable from RGB camera frame to steering."""
+    if not 0 < throttle <= 1 or max_steps < 1:
+        raise ValueError("Use throttle in (0, 1] and a positive step limit.")
+    if not isfinite(telemetry_timeout) or telemetry_timeout <= 0:
+        raise ValueError("Use a finite positive telemetry timeout.")
+    if log_prefix is None:
+        log_prefix = getattr(getattr(steer_frame, "__self__", None), "drive_log_prefix", None)
+    if not log_prefix or not re.fullmatch(r"[A-Za-z0-9_-]+", log_prefix):
+        raise ValueError("Supply a filename-safe log_prefix identifying the notebook and multiplier.")
+    steer_frame(np.zeros((120, 160, 3), dtype=np.uint8))
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:6]
-    log_path = args.log_dir / f"{run_id}.csv"
-    print(f"Loaded {args.checkpoint} on {'CUDA' if use_gpu else 'CPU'}. "
-          f"Connecting to {args.host}:{args.port} for {args.track}.", flush=True)
-    env = gym.make(args.track, conf={"host": args.host, "port": args.port})
+    log_path = log_dir / f"{log_prefix}-{run_id}.csv"
+    print(f"Connecting to {host}:{port} for {track}.", flush=True)
+    env = gym.make(track, conf={"host": host, "port": port})
     viewer = env.unwrapped.viewer
     try:
-        configure_telemetry(viewer, args.telemetry_timeout)
+        configure_telemetry(viewer, telemetry_timeout)
         with log_path.open("x", encoding="utf-8", newline="") as log:
-            assisted = args.track == DEFAULT_TRACK and not args.model_only
-            mode = "ResNet + camera lane assistance" if assisted else "ResNet only"
-            print(f"{mode}, throttle {args.throttle}. Ctrl+C to stop. Log: {log_path}", flush=True)
-            print(drive(env, model, args.throttle, args.max_steps, log, lane_assist=assisted))
+            assisted = track == DEFAULT_TRACK and lane_assist
+            mode = "Model + camera lane assistance" if assisted else "Model only"
+            print(f"{mode}, throttle {throttle}. Ctrl+C to stop. Log: {log_path}", flush=True)
+            print(drive(env, steer_frame, throttle, max_steps, log, lane_assist=assisted))
     except KeyboardInterrupt:
         print("Drive interrupted.")
     except (ConnectionError, TimeoutError) as error:
@@ -176,4 +159,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit("Load your checkpoint in its single-frame ResNet50 notebook and call run_drive(model.steer).")

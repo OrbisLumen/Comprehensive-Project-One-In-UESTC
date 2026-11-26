@@ -1,4 +1,6 @@
 {
+  "raw_dir": "data/raw/donkeycar-seeded",
+  "index_dir": "data/processed/donkeycar/seeded",
   "scene": "generated_road",
   "simulator_version": "v25.10.06",
   "seed_field": "rand_seed",

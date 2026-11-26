@@ -45,8 +45,8 @@ def read_drive(folder, metadata, training):
 
 def main():
     config = json.loads((ROOT / "examples/donkeycar/road-seed-splits.json").read_text("utf-8"))
-    archive = ROOT / "data/raw/donkeycar-seeded"
-    output = ROOT / "data/processed/donkeycar/seeded"
+    archive = ROOT / config["raw_dir"]
+    output = ROOT / config["index_dir"]
     indices = {}
     layout_split = {}
     image_split = {}

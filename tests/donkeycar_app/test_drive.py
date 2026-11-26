@@ -8,7 +8,8 @@ import pytest
 
 from donkeycar_app import drive as drive_app
 from donkeycar_app.drive import drive
-from donkeycar_app.spatial_resnet import SpatialSteeringResNet
+import json
+from pathlib import Path
 from mydezero import Variable, cuda
 
 
@@ -27,6 +28,11 @@ def test_steer_transfers_rgb_frame_to_head_device(device):
             assert pixels.dtype == xp.float32 and pixels.flags.c_contiguous
             return Variable(xp.asarray(0.25))
 
+    notebook = Path(__file__).resolve().parents[2] / "examples/donkeycar/resnet50_single_frame_spatial_9728.ipynb"
+    cell = next(c for c in json.loads(notebook.read_text("utf-8"))["cells"] if c["id"] == "steering-model")
+    namespace = {}
+    exec("".join(cell["source"]), namespace)
+    SpatialSteeringResNet = namespace["SpatialSteeringResNet"]
     assert SpatialSteeringResNet.steer(Probe(), np.zeros((120, 160, 3), dtype=np.uint8)) == 0.25
 
 
@@ -42,7 +48,7 @@ def test_drive_uses_new_observation_until_episode_ends():
 
     actions = []
     log = io.StringIO()
-    drive(Env(), SimpleNamespace(steer=float), 0.15, 10, log)
+    drive(Env(), float, 0.15, 10, log)
     np.testing.assert_allclose(actions, [[0.1, 0.15], [-0.2, 0.15]])
     log.seek(0)
     assert [row["terminated"] for row in csv.DictReader(log)] == ["False", "True"]
@@ -66,7 +72,7 @@ def test_lane_assist_corrects_toward_markings_and_falls_back(offset_px):
 
     env = SimpleNamespace(reset=lambda: (frame, {}), step=step)
     log = io.StringIO()
-    drive(env, SimpleNamespace(steer=lambda image: prediction), 0.15, 1, log, lane_assist=True)
+    drive(env, lambda image: prediction, 0.15, 1, log, lane_assist=True)
     log.seek(0)
     row = next(csv.DictReader(log))
     assert float(row["model_steering"]) == prediction
@@ -85,8 +91,6 @@ def test_lane_assist_corrects_toward_markings_and_falls_back(offset_px):
 ])
 def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
                                                         capsys, failure, message, brake_expected):
-    checkpoint = tmp_path / "steering.npz"
-    checkpoint.touch()
     log_dir = tmp_path / "runs"
     cleanup = []
     client = SimpleNamespace(
@@ -127,20 +131,13 @@ def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
             cleanup.append(("close", None))
 
     env = Env()
-    model = SimpleNamespace(load_weights=lambda path: None, steer=lambda frame: 0.25)
-    monkeypatch.setattr(drive_app, "SpatialSteeringResNet", lambda: model)
     monkeypatch.setattr(drive_app.gym, "make", lambda *args, **kwargs: env)
-    monkeypatch.setattr(drive_app.sys, "argv", [
-        "drive", "--cpu", "--model-only", "--checkpoint", str(checkpoint),
-        "--log-dir", str(log_dir), "--telemetry-timeout", "0.025",
-    ])
-
     with pytest.raises(SystemExit) as error:
-        drive_app.main()
+        drive_app.run_drive(lambda frame: 0.25, log_prefix="test_model-2x", log_dir=log_dir, telemetry_timeout=0.025)
     assert error.value.code == 1
     stderr = capsys.readouterr().err
     assert message in stderr
-    [log] = log_dir.glob("*.csv")
+    [log] = log_dir.glob("test_model-2x-*.csv")
     assert str(log) in stderr
     with log.open(newline="", encoding="utf-8") as source:
         [row] = csv.DictReader(source)

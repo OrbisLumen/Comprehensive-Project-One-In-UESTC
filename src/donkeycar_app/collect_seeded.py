@@ -127,7 +127,7 @@ def main():
                         "tools/donkey-sim/DonkeySimWin/donkey_sim.exe",
                         help="Simulator executable for a fresh session if layout verification fails")
     parser.add_argument("--log-dir", type=Path, help="Native simulator Log dir for this recording")
-    parser.add_argument("--output", type=Path, default=Path("data/raw/donkeycar-seeded"))
+    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[2] / "data/raw/donkeycar-seeded")
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--preview", action="store_true",
                         help="Keep the verified road open without recording or driving")
