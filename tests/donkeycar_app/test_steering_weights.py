@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from donkeycar_app.dataset import steering_loss_weights
+from donkeycar_app.dataset import STEERING_RECIPES, steering_loss_weights
 
 
 def test_large_commands_preserve_spike_downweighting_and_original_labels():
@@ -19,3 +19,20 @@ def test_large_commands_preserve_spike_downweighting_and_original_labels():
 def test_invalid_weight_settings(multiplier, threshold):
     with pytest.raises(ValueError):
         steering_loss_weights([], multiplier, threshold)
+
+
+@pytest.mark.parametrize("family,label,spike_weight", [
+    ("raw", "raw", 1.0),
+    ("downweighted", "raw", 0.1),
+    ("smoothed", "target", 1.0),
+])
+@pytest.mark.parametrize("multiplier", [1, 2, 4])
+def test_training_recipe_labels_and_weights(family, label, spike_weight, multiplier):
+    name = "raw" if (family, multiplier) == ("raw", 1) else f"{family}_x{multiplier}"
+    spec = STEERING_RECIPES[name]
+    rows = [dict(raw=0.29, target=0.29, weight=1, spike=False),
+            dict(raw=-1, target=0.3, weight=0.1, spike=True),
+            dict(raw=0.3, target=0.3, weight=1, spike=False)]
+    weights = steering_loss_weights(rows, spec.sharp_multiplier, downweight_spikes=spec.downweight_spikes)
+    assert spec.label == label
+    np.testing.assert_allclose(weights[:, 0], [1, spike_weight, multiplier])
