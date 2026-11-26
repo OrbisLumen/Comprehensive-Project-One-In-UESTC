@@ -164,7 +164,8 @@ The shared `run_drive(model.steer)` connects to Generated Road at localhost port
 9091, applies model steering at throttle 0.15, and logs each step under
 `runs/donkeycar/closed-loop` at the project root. Training run and weight directories start with the notebook name.
 Closed-loop CSV names include the notebook name, steering multiplier, recipe and run ID.
-For renamed checkpoints, pass the original recipe to `load_steering_model(..., recipe="...")`. Pass
+Choose `best.npz` to drive the validation winner. Both notebooks read its recipe from the matching
+training run’s `metrics.json`. For a copied standalone `best.npz` or renamed checkpoints, pass the original recipe to `load_steering_model(..., recipe="...")`. Pass
 `log_dir` to choose another location or to drive from outside the repository. Adjust `throttle`, `max_steps`, or
 `telemetry_timeout` as keyword arguments. To enable camera lane assistance
 on Generated Road, pass `lane_assist=True`. Interrupt the kernel to stop.

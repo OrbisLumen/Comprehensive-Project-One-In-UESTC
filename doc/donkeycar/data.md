@@ -64,3 +64,27 @@ Validation and test rows retain the original target and unit weight.
 Use these indices with the [global 2048 notebook](../../examples/donkeycar/resnet50_single_frame_global_2048.ipynb)
 or the [spatial 9728 notebook](../../examples/donkeycar/resnet50_single_frame_spatial_9728.ipynb).
 Each notebook opens with a table showing which label and loss weight each recipe uses.
+
+## Compare steering recipes and use the checkpoints
+
+Both notebooks cross three treatments of flagged spikes with three weights for
+large non-spike commands (absolute raw steering at least 0.3).
+
+| Training label | Spike weight | Large non-spike weight 1 | Weight 2 | Weight 4 |
+| --- | ---: | --- | --- | --- |
+| Original command | 1 | `raw` | `raw_x2` | `raw_x4` |
+| Original command | 0.1 | `downweighted_x1` | `downweighted_x2` | `downweighted_x4` |
+| Interpolated target | 1 | `smoothed_x1` | `smoothed_x2` | `smoothed_x4` |
+
+A completed run writes ten full-model checkpoints in
+`models/donkeycar/<run-id>/`. Each recipe's `.npz` saves its epoch with the
+lowest overall validation MAE against original PID commands. `best.npz` copies
+the winning recipe's checkpoint. Ties retain the first minimum encountered.
+
+The matching `runs/donkeycar/<run-id>/metrics.json` identifies the selected
+recipe and epoch. `experiment.png` shows a local steering trace and the nine
+validation curves. The global 2048 notebook writes `validation-prediction.csv`
+and `test-prediction.csv` for the winner, with one row per frame and columns
+`route`, `frame`, `target` (original PID command), `prediction`, and `recipe`.
+The spatial 9728 notebook uses `validation-predictions.csv` and
+`test-predictions.csv` with the same first four columns.
