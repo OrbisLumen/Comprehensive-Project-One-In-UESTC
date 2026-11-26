@@ -37,7 +37,7 @@ IPython supports notebook image display. Run `python -m pytest tests/mydezero --
 | Optimizers | `nn/test_optimizers.py` | SGD, MomentumSGD, hooks, independent velocities, missing gradients, zero momentum |
 | Dataset and MNIST | `datasets/test_datasets.py` | prepare, unlabeled data, transforms, train/test files, IDX headers, shapes/dtypes, raw storage, sample preview |
 | DataLoader | `datasets/test_dataloaders.py` | Order, shuffle, partial batches, repeated epochs, reset, next, empty/unlabeled data |
-| Transforms | `datasets/test_transforms.py` | Compose order and empty lists, flattening, casting, normalization, channel broadcasting, input preservation |
+| Transforms | `datasets/test_transforms.py` | Compose order and empty lists, flattening, casting, normalization, channel broadcasting, centered and random crops with padding, fill and seeds, horizontal flips with probability validation and seeds, bilinear resize with square/pair sizes and dtype rounding, spatial dimension and dtype validation, input preservation |
 | Downloads and progress | `test_downloads.py` | File downloads, nested/default/custom caches, names, URL queries, cache reuse, failure/interruption cleanup, unknown totals, progress limits |
 | Numerical and graph utilities | `test_utils.py`, `integration/test_graph_rendering.py` | Stable logsumexp, reduction shapes, DOT generation, actual PNG rendering |
 | Training pipeline | `integration/test_training.py` | Model/optimizer combinations, decreasing loss, Dataset → DataLoader → classification training → weighted evaluation |
