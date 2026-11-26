@@ -3,7 +3,6 @@
 import json
 
 import numpy as np
-from PIL import Image
 
 from mydezero.models import VGG16
 
@@ -38,26 +37,3 @@ def read_split(index_path):
         raise ValueError(f"Incorrect sample count in {index_path}")
     return [dict(sample, raw=sample["steering"], target=sample["steering"])
             for sample in samples]
-
-
-class SteeringDataset:
-    """Load camera frames with repaired targets, optionally selecting routes."""
-
-    def __init__(self, root, index_path, routes=None):
-        self.root = root
-        self.samples = read_split(index_path)
-        if routes is not None:
-            routes = set(routes)
-            missing_routes = routes - {sample["route"] for sample in self.samples}
-            if missing_routes:
-                raise ValueError(f"Routes missing from {index_path}: {sorted(missing_routes)}")
-            self.samples = [sample for sample in self.samples if sample["route"] in routes]
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, index):
-        sample = self.samples[index]
-        with Image.open(self.root / sample["image"]) as image:
-            pixels = preprocess_camera(image)
-        return pixels, np.array([sample["target"]], dtype=np.float32)
