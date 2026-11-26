@@ -26,21 +26,32 @@ def steering_loss_weights(rows, sharp_multiplier=1.0, sharp_threshold=0.3):
     return weights.reshape(-1, 1)
 
 
-class SteeringDataset:
-    """Load indexed camera frames on demand and return one steering value per frame."""
+def read_split(index_path):
+    """Read seeded sample rows or a legacy repository-relative index."""
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    if isinstance(index, list):
+        return index
+    if index["path_base"] != "repository_root":
+        raise ValueError(f"Unsupported path base in {index_path}")
+    samples = index["samples"]
+    if len(samples) != index["sample_count"]:
+        raise ValueError(f"Incorrect sample count in {index_path}")
+    return [dict(sample, raw=sample["steering"], target=sample["steering"])
+            for sample in samples]
 
-    def __init__(self, root, index_path, routes):
+
+class SteeringDataset:
+    """Load camera frames with repaired targets, optionally selecting routes."""
+
+    def __init__(self, root, index_path, routes=None):
         self.root = root
-        index = json.loads(index_path.read_text(encoding="utf-8"))
-        if index["path_base"] != "repository_root":
-            raise ValueError(f"Unsupported path base in {index_path}")
-        samples = index["samples"]
-        if len(samples) != index["sample_count"]:
-            raise ValueError(f"Incorrect sample count in {index_path}")
-        missing_routes = set(routes) - {sample["route"] for sample in samples}
-        if missing_routes:
-            raise ValueError(f"Routes missing from {index_path}: {sorted(missing_routes)}")
-        self.samples = [sample for sample in samples if sample["route"] in routes]
+        self.samples = read_split(index_path)
+        if routes is not None:
+            routes = set(routes)
+            missing_routes = routes - {sample["route"] for sample in self.samples}
+            if missing_routes:
+                raise ValueError(f"Routes missing from {index_path}: {sorted(missing_routes)}")
+            self.samples = [sample for sample in self.samples if sample["route"] in routes]
 
     def __len__(self):
         return len(self.samples)
@@ -49,4 +60,4 @@ class SteeringDataset:
         sample = self.samples[index]
         with Image.open(self.root / sample["image"]) as image:
             pixels = preprocess_camera(image)
-        return pixels, np.array([sample["steering"]], dtype=np.float32)
+        return pixels, np.array([sample["target"]], dtype=np.float32)
