@@ -20,6 +20,34 @@ from donkeycar_app.record import DEFAULT_TRACK
 DEFAULT_TELEMETRY_TIMEOUT = 5.0
 
 
+def _project_root():
+    cwd = Path.cwd()
+    return next((p for p in (cwd, *cwd.parents)
+                 if (p / "pyproject.toml").is_file() and (p / "src/donkeycar_app").is_dir()), None)
+
+
+def select_checkpoint(notebook_name):
+    """Choose a saved notebook checkpoint by number or enter a file path."""
+    root = _project_root()
+    candidates = []
+    if root is not None:
+        model_dir = root / "models/donkeycar"
+        candidates = sorted(path for path in model_dir.glob(f"{notebook_name}-*/*.npz")
+                            if path.is_file() and not path.name.endswith(".partial.npz"))
+        for number, path in enumerate(candidates, start=1):
+            print(f"{number}. {path.relative_to(model_dir)}")
+    choice = input("Checkpoint number or .npz path: ").strip()
+    if choice.isdecimal():
+        number = int(choice)
+        if 1 <= number <= len(candidates):
+            return candidates[number - 1]
+        raise ValueError("Choose a listed checkpoint number or enter a .npz path.")
+    path = Path(choice).expanduser()
+    if not path.is_file() or path.suffix.lower() != ".npz":
+        raise ValueError(f"Expected an existing .npz checkpoint: {choice!r}")
+    return path.resolve()
+
+
 def telemetry_connected(client):
     return not client.aborted and client.do_process_msgs and client.th.is_alive()
 
@@ -124,7 +152,7 @@ def drive(env, steer_frame, throttle, max_steps, log, lane_assist=False):
 
 def run_drive(steer_frame, *, track=DEFAULT_TRACK, host="127.0.0.1", port=9091,
               throttle=0.15, max_steps=2000, telemetry_timeout=DEFAULT_TELEMETRY_TIMEOUT,
-              log_dir=Path("runs/donkeycar/closed-loop"), lane_assist=False, log_prefix=None):
+              log_dir=None, lane_assist=False, log_prefix=None):
     """Drive one episode using a callable from RGB camera frame to steering."""
     if not 0 < throttle <= 1 or max_steps < 1:
         raise ValueError("Use throttle in (0, 1] and a positive step limit.")
@@ -134,6 +162,11 @@ def run_drive(steer_frame, *, track=DEFAULT_TRACK, host="127.0.0.1", port=9091,
         log_prefix = getattr(getattr(steer_frame, "__self__", None), "drive_log_prefix", None)
     if not log_prefix or not re.fullmatch(r"[A-Za-z0-9_-]+", log_prefix):
         raise ValueError("Supply a filename-safe log_prefix identifying the notebook and multiplier.")
+    if log_dir is None:
+        root = _project_root()
+        if root is None:
+            raise ValueError("Pass log_dir when driving outside the project repository.")
+        log_dir = root / "runs/donkeycar/closed-loop"
     steer_frame(np.zeros((120, 160, 3), dtype=np.uint8))
     log_dir = Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
