@@ -1,10 +1,17 @@
-# Seeded DonkeyCar datasets
+# DonkeyCar datasets
 
 Follow [the simulator setup](setup.md), activate the project Python environment
 and run the commands below from the repository root on Windows or macOS.
 Start DonkeySim and use Generated Road. The default connection port is 9091.
 
-## Collect a drive
+## Choose a recording workflow
+
+| Purpose | Entry point | Output |
+| --- | --- | --- |
+| Record keyboard driving | `python -m donkeycar_app.record` | A session under `data/raw/donkeycar/` with `samples.csv` (image, steering, throttle) and PNG frames in `images/`. |
+| Train on seeded PID drives | Run `collect_seeded.py` and then `process_seeded.py` as shown below. | The processor reads native `record_*.json` files and JPEG frames from each seeded archive and writes split indices for the notebooks. |
+
+## Collect a seeded drive
 
 Choose a seed from [the split manifest](../../examples/donkeycar/road-seed-splits.json).
 To verify a layout and leave it open for inspection, run:
@@ -53,3 +60,7 @@ full-lock command opposite to both immediate neighbors receive weight 0.1
 when frame IDs are consecutive and throttle is positive across all three
 frames. For isolated spikes, `target` is the mean of the neighboring commands.
 Validation and test rows retain the original target and unit weight.
+
+Use these indices with the [global 2048 notebook](../../examples/donkeycar/resnet50_single_frame_global_2048.ipynb)
+or the [spatial 9728 notebook](../../examples/donkeycar/resnet50_single_frame_spatial_9728.ipynb).
+Each notebook opens with a table showing which label and loss weight each recipe uses.
