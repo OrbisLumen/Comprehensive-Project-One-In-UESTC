@@ -241,7 +241,7 @@ MyDeZero currently implements a NumPy subset of that framework:
 | `optimizers.py` | Optimizer base class, hooks, SGD, MomentumSGD, and Adam | Adam can fuse eligible FP32 CUDA updates |
 | `datasets.py` | Dataset base class and cached MNIST loading, raw image preview | Entire split is loaded in memory; transforms run per sample |
 | `dataloaders.py` | Shuffled or sequential NumPy mini-batches | Includes partial final batches and resets after exhaustion |
-| `transforms.py` | Compose, Flatten, Normalize, AsType/ToFloat, ToInt | NumPy sample transforms; channel-first normalization |
+| `transforms.py` | Compose, Flatten, Normalize, AsType/ToFloat, ToInt, CentralCrop, RandomCrop, RandomHorizontalFlip, Resize | NumPy sample transforms; spatial transforms precede flattening; channel-first normalization |
 | `utils.py` | DOT graph generation, rendering, reduction gradient helpers, stable logsumexp, downloads and progress | Downloads use a local disk cache; numerical helpers use NumPy; `graph.py` is currently empty |
 
 Library docstrings use Google style (`Args`, `Returns`, `Yields`, `Attributes`, and

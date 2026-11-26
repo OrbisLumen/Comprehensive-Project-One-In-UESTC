@@ -65,10 +65,25 @@ Import from `mydezero.transforms`:
 | `AsType(dtype=np.float32)` | Converts NumPy dtype |
 | `ToFloat(dtype=np.float32)` | Alias for AsType |
 | `ToInt(dtype=int)` | Converts to platform integers by default; accepts another integer dtype |
+| `CentralCrop(size)` | Centered square crop over the trailing `(H, W)` axes; raises `ValueError` if `size` exceeds them |
+| `RandomCrop(size, padding=0, fill=0, seed=None)` | Optional constant padding first, then a random square crop; `seed` makes the sampled positions reproducible |
+| `RandomHorizontalFlip(p=0.5, seed=None)` | Flips the trailing width axis with probability `p`; steering labels need negation for driving images |
+| `Resize(size)` | Bilinear resize of the trailing `(H, W)` axes; `size` is a square side length or a `(height, width)` pair; integer arrays are rounded back to their dtype |
 | `Normalize(mean=0, std=1)` | `(array - mean) / std`; std must be nonzero. Sequence arguments broadcast by channel along the first axis |
 
 Convert images to floating point before normalization to avoid integer truncation
 or overflow. Channel normalization expects `(C, H, W)` and should precede Flatten.
+
+Spatial transforms operate on the trailing `(H, W)` axes and accept `(H, W)` or
+`(C, H, W)` arrays. Apply them before `Flatten`, `ToFloat`, and `Normalize`.
+Random transforms accept a `seed` argument for reproducible draws; use them for
+training data only and evaluate with deterministic transforms. Horizontal flips
+preserve classification labels, but a steering label must be negated for flipped
+driving frames. `Resize` uses bilinear interpolation with half-pixel centers;
+integer arrays are rounded back to their dtype, so convert to floating point
+first when subpixel precision matters. Spatial transforms require at least two
+dimensions and nonempty spatial axes. `RandomCrop.fill` is cast to the input
+dtype, so use a value representable by that dtype for integer images.
 
 ```python
 from mydezero.transforms import Compose, Flatten, Normalize, ToFloat
@@ -76,6 +91,14 @@ from mydezero.transforms import Compose, Flatten, Normalize, ToFloat
 transform = Compose([ToFloat(), Normalize([0.5], [0.5]), Flatten()])
 # These statistics assume [0, 1] input; raw MNIST pixels are in [0, 255].
 mnist_transform = Compose([Flatten(), ToFloat(), Normalize(0, 255)])
+```
+
+```python
+from mydezero.transforms import Compose, Flatten, RandomCrop, RandomHorizontalFlip, ToFloat
+
+train_transform = Compose([RandomCrop(28, padding=4, seed=0),
+                           RandomHorizontalFlip(seed=1), ToFloat(), Flatten()])
+eval_transform = Compose([ToFloat(), Normalize(0, 255), Flatten()])
 ```
 
 ## DataLoader and Evaluation
