@@ -90,6 +90,29 @@ into contiguous rows when the NumPy version provides it. Input gradients use
 the transposed-convolution implementation. CPU `2 × 2` max pooling with stride
 2 and zero padding uses direct comparisons inside `no_grad()` for FP32 and FP64.
 
+For matching FP32 or FP64 CuPy arrays, unpadded stride-1 pointwise convolution
+flattens batch and pixel rows into one GEMM for the forward pass and its
+gradients. Unpadded 2 × 2 stride-2 CUDA max pooling uses direct window reads and
+compact indices, including when recording the backward graph. FP32 CUDA cross
+entropy uses a stable row kernel and a fused first derivative. Higher
+derivatives rebuild the differentiable softmax expression. BatchNorm and global
+average pooling use counts with at least FP32 precision to preserve FP32
+activations and gradients and avoid FP16 count overflow.
+
+`using_config('use_cudnn', True)` enables an experimental FP32 convolution
+backend when a separately installed cuDNN library is available. Set
+`MYDEZERO_CUDNN_LIBRARY` to its shared-library path if discovery fails. The backend
+uses FMA math, direct/GEMM algorithm heuristics, and up to 256 MiB of per-call
+workspace. Descriptors are cached by device, shape, stride and padding in each
+host thread. Pointwise GEMM remains available. CPU and FP64 inputs follow their
+existing paths. The default is `use_cudnn=False`. Validate the target model's
+gradients and quality before enabling this experimental backend for training.
+
+Fused CUDA Adam supports independent C- and F-contiguous FP32 buffers. For
+Fortran-contiguous weights and moments, it packs gradients in the same order and
+updates flat physical views. The pack is included in optimizer timings and can
+temporarily require one additional gradient-sized buffer.
+
 `Linear`, `Conv2d`, and `Deconv2d` cast newly initialized weights to the layer's
 declared dtype after applying the scale factor. This also applies to lazy
 initialization on the input device.
@@ -119,6 +142,7 @@ initialization on the input device.
 | `update()` | Updates parameters with gradients; does not clear gradients |
 | `optimizers.SGD(lr=0.01)` | `param -= lr * grad` |
 | `optimizers.MomentumSGD(lr=0.01, momentum=0.9)` | Stores per-parameter velocity; `v = momentum*v - lr*grad`, `param += v` |
+| `optimizers.Adam(lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8, *, fused=True)` | Tracks per-parameter moments and counts. Enables a fused weight and moment update for supported FP32 CUDA arrays |
 
 Use floating-point parameter arrays. Reuse MomentumSGD across batches to retain
 momentum. With CuPy installed, variables, layers, optimizers, and DataLoader

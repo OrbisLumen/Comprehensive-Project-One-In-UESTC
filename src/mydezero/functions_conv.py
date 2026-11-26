@@ -41,6 +41,14 @@ def _pack_cpu_columns(x, kernel_size, stride, pad):
     return rows.reshape(-1, x.shape[1] * kernel_size[0] * kernel_size[1]), rows.shape[:3]
 
 
+def _gpu_pointwise(x, other, kernel, stride, pad):
+    return (cuda.gpu_enable and isinstance(x, cuda.cupy.ndarray)
+            and isinstance(other, cuda.cupy.ndarray)
+            and x.dtype in (np.float32, np.float64) and other.dtype == x.dtype
+            and x.ndim == other.ndim == 4 and min(x.shape) > 0
+            and kernel == (1, 1) and stride == (1, 1) and pad == (0, 0))
+
+
 class Conv2d(Function):
     def __init__(self, stride=1, pad=0):
         super().__init__()
@@ -51,6 +59,22 @@ class Conv2d(Function):
         xp = cuda.get_array_module(x)
 
         kernel_size = W.shape[2:]
+        if (_gpu_pointwise(x, W, kernel_size, self.stride, self.pad)
+                and x.shape[1] == W.shape[1]):
+            n, c, h, w = x.shape
+            pixels = x.transpose(0, 2, 3, 1).reshape(-1, c)
+            y = (pixels @ W[:, :, 0, 0].T).reshape(n, h, w, W.shape[0])
+            if b is not None:
+                y += b
+            return y.transpose(0, 3, 1, 2)
+        if Config.use_cudnn:
+            from mydezero import _cudnn
+            if _cudnn.eligible(x, W):
+                y = _cudnn.execute('forward', x, W, self.stride, self.pad)
+                if b is not None:
+                    y += b.reshape(1, -1, 1, 1)
+                return y
+
         mode = _cpu_conv_mode(x, W, kernel_size, self.stride, self.pad)
         if mode == 'pointwise' and x.shape[1] == W.shape[1]:
             n, channels, height, width = x.shape
@@ -119,6 +143,22 @@ class Deconv2d(Function):
             out_h, out_w = pair(self.outsize)
         img_shape = (N, OC, out_h, out_w)
 
+        if (_gpu_pointwise(x, Weight, (KH, KW), self.stride, self.pad)
+                and C == Weight.shape[0] and (out_h, out_w) == (H, W)):
+            pixels = x.transpose(0, 2, 3, 1).reshape(-1, C)
+            y = (pixels @ Weight[:, :, 0, 0]).reshape(N, H, W, OC).transpose(0, 3, 1, 2)
+            if b is not None:
+                y += b.reshape(1, -1, 1, 1)
+            return y
+        if Config.use_cudnn:
+            from mydezero import _cudnn
+            if _cudnn.eligible(x, Weight):
+                y = _cudnn.execute('data', x, Weight, self.stride, self.pad,
+                                   gradient=x, input_shape=img_shape)
+                if b is not None:
+                    y += b.reshape(1, -1, 1, 1)
+                return y
+
         gcol = xp.tensordot(Weight, x, (0, 1))
         gcol = xp.rollaxis(gcol, 3)
         y = col2im_array(gcol, img_shape, (KH, KW), self.stride, self.pad,
@@ -172,6 +212,19 @@ class Conv2DGradW(Function):
     def forward(self, x, gy):
         xp = cuda.get_array_module(x)
 
+        if (_gpu_pointwise(x, gy, self.kernel_size, self.stride, self.pad)
+                and x.shape[0] == gy.shape[0] and x.shape[2:] == gy.shape[2:]):
+            pixels = x.transpose(0, 2, 3, 1).reshape(-1, x.shape[1])
+            gradients = gy.transpose(0, 2, 3, 1).reshape(-1, gy.shape[1])
+            return (gradients.T @ pixels).reshape(gy.shape[1], x.shape[1], 1, 1)
+
+        if Config.use_cudnn:
+            from mydezero import _cudnn
+            if _cudnn.eligible(x, gy):
+                shape = (gy.shape[1], x.shape[1], *self.kernel_size)
+                return _cudnn.execute('weight', x, None, self.stride, self.pad,
+                                      gradient=gy, weight_shape=shape)
+
         mode = _cpu_conv_mode(x, gy, self.kernel_size, self.stride, self.pad)
         if mode and x.shape[0] == gy.shape[0] and gy.shape[2:] == tuple(
             get_conv_outsize(size, kernel, stride, pad)
@@ -210,6 +263,19 @@ class Pooling(Function):
         self.pad = pad
 
     def forward(self, x):
+        self.direct_gpu = (cuda.gpu_enable and isinstance(x, cuda.cupy.ndarray)
+                           and x.ndim == 4 and x.dtype in (np.float32, np.float64)
+                           and min(x.shape) > 0 and min(x.shape[2:]) >= 2
+                           and pair(self.kernel_size) == pair(self.stride) == (2, 2)
+                           and pair(self.pad) == (0, 0))
+        if self.direct_gpu:
+            n, c, h, w = x.shape
+            output_shape = (n, c, h // 2, w // 2)
+            y = cuda.cupy.empty(output_shape, dtype=x.dtype)
+            self.indexes = cuda.cupy.empty(output_shape, dtype=np.int8)
+            _pool2_forward(cuda.cupy.ascontiguousarray(x), h, w, y, self.indexes)
+            return y
+
         if (not Config.enable_backprop and type(x) is np.ndarray
                 and x.dtype in (np.float32, np.float64) and x.ndim == 4
                 and min(x.shape[2:]) >= 2
@@ -249,6 +315,11 @@ class Pooling2DGrad(Function):
     def forward(self, gy):
         xp = cuda.get_array_module(gy)
 
+        if getattr(self.mpool2d, 'direct_gpu', False):
+            gx = xp.empty(self.input_shape, dtype=self.dtype)
+            _pool2_backward(xp.ascontiguousarray(gy), self.indexes,
+                            self.input_shape[2], self.input_shape[3], gx)
+            return gx
         N, C, OH, OW = gy.shape
         N, C, H, W = self.input_shape
         KH, KW = pair(self.kernel_size)
@@ -280,8 +351,14 @@ class Pooling2DWithIndexes(Function):
         self.input_shape = mpool2d.inputs[0].shape
         self.dtype = mpool2d.inputs[0].dtype
         self.indexes = mpool2d.indexes
+        self.direct_gpu = getattr(mpool2d, 'direct_gpu', False)
 
     def forward(self, x):
+        if self.direct_gpu:
+            out = cuda.cupy.empty(self.indexes.shape, dtype=x.dtype)
+            _pool2_gather(cuda.cupy.ascontiguousarray(x), self.indexes,
+                          x.shape[2], x.shape[3], out)
+            return out
         col = im2col_array(x, self.kernel_size, self.stride, self.pad,
                            to_matrix=False)
         N, C, KH, KW, OH, OW = col.shape
@@ -290,6 +367,43 @@ class Pooling2DWithIndexes(Function):
         indexes = self.indexes.ravel()
         col = col[np.arange(len(indexes)), indexes]
         return col.reshape(N, C, OH, OW)
+
+
+if cuda.gpu_enable:
+    _pool2_forward = cuda.cupy.ElementwiseKernel(
+        'raw T x, int64 h, int64 w', 'T y, int8 index',
+        '''
+        long long oh = h / 2, ow = w / 2;
+        long long base = (i / (oh * ow)) * h * w + (i / ow % oh) * 2 * w + (i % ow) * 2;
+        T best = x[base];
+        index = 0;
+        for (int k = 1; k < 4; ++k) {
+            T value = x[base + (k / 2) * w + k % 2];
+            if (!isnan(best) && (isnan(value) || value > best)) {
+                best = value;
+                index = k;
+            }
+            if (best == 0 && value == 0) best = best + value;
+        }
+        y = best;
+        ''', 'mydezero_pool2_forward')
+    _pool2_backward = cuda.cupy.ElementwiseKernel(
+        'raw S gy, raw int8 index, int64 h, int64 w', 'T gx',
+        '''
+        long long y = i / w % h, x = i % w, oh = h / 2, ow = w / 2;
+        gx = 0;
+        if (y < oh * 2 && x < ow * 2) {
+            long long j = i / (h * w) * oh * ow + y / 2 * ow + x / 2;
+            if (index[j] == (y % 2) * 2 + x % 2) gx = gy[j];
+        }
+        ''', 'mydezero_pool2_backward')
+    _pool2_gather = cuda.cupy.ElementwiseKernel(
+        'raw T x, int8 index, int64 h, int64 w', 'T y',
+        '''
+        long long oh = h / 2, ow = w / 2;
+        long long base = i / (oh * ow) * h * w + (i / ow % oh) * 2 * w + i % ow * 2;
+        y = x[base + index / 2 * w + index % 2];
+        ''', 'mydezero_pool2_gather')
 
 
 def pooling(x, kernel_size, stride=1, pad=0):

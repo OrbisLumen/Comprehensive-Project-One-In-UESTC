@@ -7,6 +7,17 @@ from mydezero import Variable, no_grad, using_config
 from mydezero.functions import batch_norm
 
 
+@pytest.mark.parametrize('create_graph', [False, True])
+def test_batch_norm_count_exceeding_fp16_range(create_graph):
+    x = Variable(np.zeros((65536, 1), dtype=np.float16))
+    gamma = np.ones(1, dtype=np.float16)
+    beta = np.zeros(1, dtype=np.float16)
+    y = batch_norm(x, gamma, beta, beta.copy(), gamma.copy())
+    y.grad = Variable(np.full(x.shape, 0.125, dtype=np.float16))
+    y.backward(create_graph=create_graph)
+    np.testing.assert_array_equal(x.grad.data, np.zeros(x.shape))
+
+
 @pytest.mark.parametrize('shape', [(2, 2), (3, 2), (2, 2, 2, 3)])
 @pytest.mark.parametrize('train', [True, False], ids=['train', 'inference'])
 def test_batch_norm_forward_and_numerical_gradients(shape, train):

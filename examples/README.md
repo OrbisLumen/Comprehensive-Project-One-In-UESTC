@@ -24,6 +24,7 @@ Suggested reading order:
 | `neural_network` | [cpu_optimization.ipynb](neural_network/cpu_optimization.ipynb) | CPU weight dtype, inference pooling, spatial and pointwise convolution, and end-to-end ablation against the original paths and PyTorch |
 | `neural_network` | [train_mnist_mlp.ipynb](neural_network/train_mnist_mlp.ipynb) | Training an MLP on MNIST |
 | `neural_network` | [train_mnist_with_gpu.ipynb](neural_network/train_mnist_with_gpu.ipynb) | Training an MLP on MNIST with GPU acceleration |
+| `neural_network` | [gpu_optimization.ipynb](neural_network/gpu_optimization.ipynb) | Three-stage CUDA experiments, operator and model ablation, paired quality, cuDNN and scheduling feasibility |
 | `neural_network` | [weights_saved_loaded.ipynb](neural_network/weights_saved_loaded.ipynb) | Saving and loading trained weights |
 | `neural_network` | [pretrained_cnn_validation.ipynb](neural_network/pretrained_cnn_validation.ipynb) | Official-weight comparison with DeZero and CPU/CUDA benchmarks for global average pooling and full ResNet50 inference |
 
@@ -38,3 +39,17 @@ optional TPE comparison, install Optuna in the kernel and enable `RUN_TPE_SEARCH
 
 The CPU optimization notebook uses NumPy, CPU PyTorch, scikit-learn, and
 threadpoolctl. MNIST uses the standard MyDeZero dataset cache.
+
+The GPU optimization notebook uses CUDA-enabled PyTorch, CuPy, scikit-learn,
+threadpoolctl, and the standard MNIST cache. Run it from its own directory.
+Its cuDNN probe can use the benchmark PyTorch installation's shared library or
+`MYDEZERO_CUDNN_LIBRARY`. Set `DEZERO_REFERENCE` to a compatible local DeZero
+checkout for the optional aligned-SGD comparison. These probes add no package
+runtime dependency. CUDA Graph availability depends on the installed CuPy and
+CUDA libraries. The notebook reports unsupported full-model capture explicitly.
+
+The large-model follow-up uses `gpu_large_workloads.py` to launch independent
+processes. Set `MYDEZERO_WEIGHTS_DIR` to a directory containing compatible
+`vgg16.npz` and `resnet50.npz` archives and configure the cuDNN shared library
+for the experimental backend. The notebook reports rejected training cases
+separately from accepted speed measurements.

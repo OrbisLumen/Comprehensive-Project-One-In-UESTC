@@ -62,6 +62,12 @@ their velocity. Hooks run before updates, as with SGD. A momentum of zero produc
 the same updates as SGD. Trainable parameters should use floating-point NumPy
 arrays.
 
+`Adam()` fuses moment and weight updates for independent, contiguous FP32
+CuPy arrays on the active CUDA device. Other arrays use the standard update.
+Both C and Fortran storage orders are supported. The Fortran path uses a
+gradient pack and physical views to keep parameter and moment access contiguous.
+Set `Adam(fused=False)` to select the standard update for comparisons.
+
 ## Softmax and Classification Loss
 
 `F.softmax(x, axis=1)` converts an `(N, C)` batch of logits into class
@@ -232,7 +238,7 @@ MyDeZero currently implements a NumPy subset of that framework:
 | `functions.py` | Elementary functions, tensor operations, losses, activations, batch normalization, and batched matrix multiplication | NumPy indexing accumulates gradients for repeated indices. Matrix multiplication and linear transforms support 2D batches, while `batched_matmul` multiplies equal-shaped batches over their last two axes. Self-attention is not part of the local DeZero reference. Classification loss accepts integer labels and averages over the batch. Batch normalization reduces directly over the non-channel axes |
 | `layers.py` | Recursive parameter collection, Linear, Conv2d, Deconv2d, BatchNorm, SelfAttention, and weight serialization | Supports lazy initialization and DeZero's hierarchical parameter keys; SelfAttention is a single-head extension without masks, dropout, or multi-head splits |
 | `models.py` | Model base class, graph visualization, Sequential, MLP, VGG16, and ResNet50/101/152 | VGG16 and ResNet support DeZero pretrained weights |
-| `optimizers.py` | Optimizer base class, hooks, SGD, and MomentumSGD | Other update rules and built-in hooks remain unimplemented |
+| `optimizers.py` | Optimizer base class, hooks, SGD, MomentumSGD, and Adam | Adam can fuse eligible FP32 CUDA updates |
 | `datasets.py` | Dataset base class and cached MNIST loading, raw image preview | Entire split is loaded in memory; transforms run per sample |
 | `dataloaders.py` | Shuffled or sequential NumPy mini-batches | Includes partial final batches and resets after exhaustion |
 | `transforms.py` | Compose, Flatten, Normalize, AsType/ToFloat, ToInt | NumPy sample transforms; channel-first normalization |
