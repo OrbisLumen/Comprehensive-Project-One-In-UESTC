@@ -91,7 +91,12 @@ def test_lane_assist_corrects_toward_markings_and_falls_back(offset_px):
 ])
 def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
                                                         capsys, failure, message, brake_expected):
-    log_dir = tmp_path / "runs"
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src/donkeycar_app").mkdir(parents=True)
+    notebook_dir = tmp_path / "examples/donkeycar"
+    notebook_dir.mkdir(parents=True)
+    monkeypatch.chdir(tmp_path if failure == "abort" else notebook_dir)
+    log_dir = tmp_path / "runs/donkeycar/closed-loop"
     cleanup = []
     client = SimpleNamespace(
         aborted=False, do_process_msgs=True, th=SimpleNamespace(is_alive=lambda: True),
@@ -133,7 +138,7 @@ def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
     env = Env()
     monkeypatch.setattr(drive_app.gym, "make", lambda *args, **kwargs: env)
     with pytest.raises(SystemExit) as error:
-        drive_app.run_drive(lambda frame: 0.25, log_prefix="test_model-2x", log_dir=log_dir, telemetry_timeout=0.025)
+        drive_app.run_drive(lambda frame: 0.25, log_prefix="test_model-2x", telemetry_timeout=0.025)
     assert error.value.code == 1
     stderr = capsys.readouterr().err
     assert message in stderr
@@ -144,3 +149,20 @@ def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
     assert row["step"] == "1" and float(row["steering"]) == 0.25
     expected = [("brake", "1")] if brake_expected else []
     assert cleanup == expected + [("shutdown", socket.SHUT_RDWR), ("close", None)]
+
+
+def test_select_checkpoint_filters_by_notebook_and_accepts_external_path(tmp_path, monkeypatch, capsys):
+    (tmp_path / "pyproject.toml").touch()
+    (tmp_path / "src/donkeycar_app").mkdir(parents=True)
+    for name in ("spatial-run/raw.npz", "spatial-run/raw.partial.npz", "global-run/raw.npz"):
+        path = tmp_path / "models/donkeycar" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
+    monkeypatch.chdir(tmp_path / "src")
+    monkeypatch.setattr("builtins.input", lambda _: "1")
+    assert drive_app.select_checkpoint("spatial") == tmp_path / "models/donkeycar/spatial-run/raw.npz"
+    assert capsys.readouterr().out.splitlines() == [f"1. {Path('spatial-run/raw.npz')}"]
+    external = tmp_path / "custom.npz"
+    external.touch()
+    monkeypatch.setattr("builtins.input", lambda _: str(external))
+    assert drive_app.select_checkpoint("spatial") == external
