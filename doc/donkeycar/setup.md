@@ -157,15 +157,15 @@ Use only the listed images in `samples.csv` and skip drives with no sample rows.
 Start DonkeySim at the main menu and open the notebook matching your trained head:
 [spatial 9728](../../examples/donkeycar/resnet50_single_frame_spatial_9728.ipynb) or
 [global 2048](../../examples/donkeycar/resnet50_single_frame_global_2048.ipynb).
-Run its model definition cell and follow **Drive a saved checkpoint** at the end.
-Use an absolute checkpoint path or a path relative to the kernel working directory.
+Run its model definition cell and enable **Drive a saved checkpoint** immediately below it.
+Choose a listed checkpoint by number, or enter an absolute path or a path relative to the kernel working directory.
 
 The shared `run_drive(model.steer)` connects to Generated Road at localhost port
 9091, applies model steering at throttle 0.15, and logs each step under
-`runs/donkeycar/closed-loop` relative to the working directory. Training run and weight directories start with the notebook name.
+`runs/donkeycar/closed-loop` at the project root. Training run and weight directories start with the notebook name.
 Closed-loop CSV names include the notebook name, steering multiplier, recipe and run ID.
 For renamed checkpoints, pass the original recipe to `load_steering_model(..., recipe="...")`. Pass
-`log_dir` to choose another location. Adjust `throttle`, `max_steps`, or
+`log_dir` to choose another location or to drive from outside the repository. Adjust `throttle`, `max_steps`, or
 `telemetry_timeout` as keyword arguments. To enable camera lane assistance
 on Generated Road, pass `lane_assist=True`. Interrupt the kernel to stop.
 
