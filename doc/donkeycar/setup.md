@@ -163,6 +163,12 @@ Choose a listed checkpoint by number, or enter an absolute path or a path relati
 The shared `run_drive(model.steer)` connects to Generated Road at localhost port
 9091, applies model steering at throttle 0.15, and logs each step under
 `runs/donkeycar/closed-loop` at the project root. Training run and weight directories start with the notebook name.
+To regulate speed from Python, call `run_drive(model.steer, target_speed=2.0)`
+using the same units as the simulator's `speed` telemetry. Supply either a
+positive target speed or a fixed `throttle`. Omitting both uses fixed throttle
+0.15. Speed control adjusts forward throttle from 0 to 1 and coasts to slow
+down. The CSV records the requested target, applied throttle and measured speed.
+
 Closed-loop CSV names include the notebook name, steering multiplier, recipe and run ID.
 Choose `best.npz` to drive the validation winner. Both notebooks read its recipe from the matching
 training run’s `metrics.json`. For a copied standalone `best.npz` or renamed checkpoints, pass the original recipe to `load_steering_model(..., recipe="...")`. Pass
