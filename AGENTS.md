@@ -2,16 +2,13 @@
 
 ## Working Guidelines
 
-1. Check the matching `request/` folder before starting an assignment.
-2. Use `reference/` for supporting materials and examples.
-3. Keep course submissions in `work/` when needed.
-4. Keep library and application packages under `src/`, tests in `tests/`, and notebooks in `examples/`.
-5. Use one repository per semester. This repository covers Project I.
-   Support both macOS and Windows. Use portable paths and document platform-specific setup.
-6. When a change is requested, first analyze it and provide code suggestions before editing files.
-7. Keep changes and suggestions as simple as possible, and think twice before adding complexity.
-8. Keep changes narrowly scoped and avoid broad structural changes.
-9. Before editing for a new task, create a branch named for that task from the latest `origin/master`. Use one branch and one PR per task. Continue review fixes on the same branch.
+1. Use `reference/` for supporting materials and examples.
+2. Keep library and application packages under `src/`, tests in `tests/`, and notebooks in `examples/`.
+3. This repository supports both macOS and Windows. Use portable paths and document platform-specific setup.
+4. When a change is requested, first analyze it and provide code suggestions before editing files.
+5. Keep changes and suggestions as simple as possible, and think twice before adding complexity.
+6. Keep changes narrowly scoped and avoid broad structural changes.
+7. When starting a task, continue on the current branch if it is related to the task and is not `master`. If the current branch is `master` or is unrelated to the task, create a new branch for the task from the current branch. Continue review fixes on the same branch.
 
 ## MyDeZero
 
@@ -22,7 +19,7 @@
   implementation comparisons in `doc/mydezero/`. Explain substantial documentation
   additions before writing them.
 - Test behavior and correctness. When commits are requested, separate functionality,
-  tests and documentation, in that order.
+  tests, documentation and etc.
 
 ## Testing Guidelines
 
