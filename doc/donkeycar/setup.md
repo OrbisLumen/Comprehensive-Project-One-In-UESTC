@@ -162,8 +162,10 @@ Use an absolute checkpoint path or a path relative to the kernel working directo
 
 The shared `run_drive(model.steer)` connects to Generated Road at localhost port
 9091, applies model steering at throttle 0.15, and logs each step under
-`runs/donkeycar/closed-loop` relative to the working directory. Training run and weight directories start with the notebook name.
+`runs/donkeycar/closed-loop` at the project root, including when called from a notebook under `examples/donkeycar`. Training run and weight directories start with the notebook name.
 Closed-loop CSV names include the notebook name, steering multiplier, recipe and run ID.
+Each run creates a directory named after the CSV stem. It contains the CSV and one PNG per completed step.
+The CSV column `image` names the RGB frame used to predict that step's steering.
 For renamed checkpoints, pass the original recipe to `load_steering_model(..., recipe="...")`. Pass
 `log_dir` to choose another location. Adjust `throttle`, `max_steps`, or
 `telemetry_timeout` as keyword arguments. To enable camera lane assistance

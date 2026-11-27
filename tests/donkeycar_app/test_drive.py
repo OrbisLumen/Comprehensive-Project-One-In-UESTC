@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from donkeycar_app import drive as drive_app
 from donkeycar_app.drive import drive
@@ -91,7 +92,17 @@ def test_lane_assist_corrects_toward_markings_and_falls_back(offset_px):
 ])
 def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
                                                         capsys, failure, message, brake_expected):
-    log_dir = tmp_path / "runs"
+    if failure == "silent":
+        (tmp_path / "pyproject.toml").touch()
+        (tmp_path / "src/donkeycar_app").mkdir(parents=True)
+        notebook_dir = tmp_path / "examples/donkeycar"
+        notebook_dir.mkdir(parents=True)
+        monkeypatch.chdir(notebook_dir)
+        log_dir = tmp_path / "runs/donkeycar/closed-loop"
+        options = {}
+    else:
+        log_dir = tmp_path / "runs"
+        options = {"log_dir": log_dir}
     cleanup = []
     client = SimpleNamespace(
         aborted=False, do_process_msgs=True, th=SimpleNamespace(is_alive=lambda: True),
@@ -104,7 +115,7 @@ def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
     def observe():
         assert handler.last_received != handler.time_received
         handler.last_received = handler.time_received
-        return None, 0.0, False, info
+        return np.full((2, 3, 3), handler.time_received, dtype=np.uint8), 0.0, False, info
 
     handler.observe = observe
     viewer = SimpleNamespace(client=client, handler=handler)
@@ -133,14 +144,19 @@ def test_cli_exits_on_telemetry_failure_and_preserves_csv(tmp_path, monkeypatch,
     env = Env()
     monkeypatch.setattr(drive_app.gym, "make", lambda *args, **kwargs: env)
     with pytest.raises(SystemExit) as error:
-        drive_app.run_drive(lambda frame: 0.25, log_prefix="test_model-2x", log_dir=log_dir, telemetry_timeout=0.025)
+        drive_app.run_drive(lambda frame: 0.25, log_prefix="test_model-2x", telemetry_timeout=0.025, **options)
     assert error.value.code == 1
     stderr = capsys.readouterr().err
     assert message in stderr
-    [log] = log_dir.glob("test_model-2x-*.csv")
+    [run_dir] = log_dir.glob("test_model-2x-*")
+    log = run_dir / f"{run_dir.name}.csv"
     assert str(log) in stderr
     with log.open(newline="", encoding="utf-8") as source:
         [row] = csv.DictReader(source)
     assert row["step"] == "1" and float(row["steering"]) == 0.25
+    [image] = run_dir.glob("*.png")
+    assert image.name == row["image"]
+    with Image.open(image) as saved:
+        np.testing.assert_array_equal(np.asarray(saved), np.ones((2, 3, 3), dtype=np.uint8))
     expected = [("brake", "1")] if brake_expected else []
     assert cleanup == expected + [("shutdown", socket.SHUT_RDWR), ("close", None)]
