@@ -13,6 +13,7 @@ from uuid import uuid4
 import gymnasium as gym
 import gym_donkeycar  # Registers the simulator environments.
 import numpy as np
+from PIL import Image
 
 from donkeycar_app.record import DEFAULT_TRACK
 
@@ -138,12 +139,12 @@ class _SpeedController:
         return float(np.clip(proportional + self.cruise_throttle, 0, 1))
 
 
-def drive(env, steer_frame, throttle, max_steps, log, lane_assist=False, *, target_speed=None):
+def drive(env, steer_frame, throttle, max_steps, log, lane_assist=False, image_dir=None, *, target_speed=None):
     """Run one episode and log the action and resulting telemetry for each step."""
     writer = csv.writer(log)
     writer.writerow(("step", "elapsed_s", "steering", "throttle", "inference_ms",
                      "cte", "speed", "hit", "lap_count", "terminated", "truncated",
-                     "model_steering", "lane_offset_px", "target_speed"))
+                     "model_steering", "lane_offset_px", "target_speed", "image"))
     controller = _SpeedController(target_speed) if target_speed is not None else None
     frame, info = env.reset()
     start = perf_counter()
@@ -162,10 +163,15 @@ def drive(env, steer_frame, throttle, max_steps, log, lane_assist=False, *, targ
             throttle = controller.update(info["speed"], now - previous_update)
             previous_update = now
         action = np.array([steer, throttle], dtype=np.float32)
+        image = Image.fromarray(frame).copy() if image_dir is not None else None
         frame, _, terminated, truncated, info = env.step(action)
+        image_name = ""
+        if image is not None:
+            image_name = f"frame-{step:06d}.png"
+            image.save(image_dir / image_name)
         writer.writerow((step, round(perf_counter() - start, 4), steer, throttle, round(latency, 3),
                          info["cte"], info["speed"], info["hit"], info["lap_count"], terminated, truncated,
-                         prediction, offset, target_speed))
+                         prediction, offset, target_speed, image_name))
         log.flush()
         if step == 1 or step % 50 == 0 or terminated or truncated:
             print(f"Step {step}  steer {steer:+.3f}  CTE {info['cte']:+.2f}  "
@@ -203,9 +209,10 @@ def run_drive(steer_frame, *, track=DEFAULT_TRACK, host="127.0.0.1", port=9091,
         log_dir = root / "runs/donkeycar/closed-loop"
     steer_frame(np.zeros((120, 160, 3), dtype=np.uint8))
     log_dir = Path(log_dir)
-    log_dir.mkdir(parents=True, exist_ok=True)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:6]
-    log_path = log_dir / f"{log_prefix}-{run_id}.csv"
+    run_dir = log_dir / f"{log_prefix}-{run_id}"
+    run_dir.mkdir(parents=True)
+    log_path = run_dir / f"{run_dir.name}.csv"
     print(f"Connecting to {host}:{port} for {track}.", flush=True)
     env = gym.make(track, conf={"host": host, "port": port})
     viewer = env.unwrapped.viewer
@@ -216,7 +223,8 @@ def run_drive(steer_frame, *, track=DEFAULT_TRACK, host="127.0.0.1", port=9091,
             mode = "Model + camera lane assistance" if assisted else "Model only"
             control = f"throttle {throttle}" if target_speed is None else f"target speed {target_speed}"
             print(f"{mode}, {control}. Ctrl+C to stop. Log: {log_path}", flush=True)
-            print(drive(env, steer_frame, throttle, max_steps, log, lane_assist=assisted, target_speed=target_speed))
+            print(drive(env, steer_frame, throttle, max_steps, log, lane_assist=assisted,
+                        image_dir=run_dir, target_speed=target_speed))
     except KeyboardInterrupt:
         print("Drive interrupted.")
     except (ConnectionError, TimeoutError) as error:
